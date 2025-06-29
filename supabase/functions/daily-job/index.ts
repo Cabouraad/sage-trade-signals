@@ -1,6 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { collectMarketData } from './data-collector.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,9 +19,17 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('Starting daily ranking job...');
+    console.log('Starting daily job: Data collection + Ranking...');
 
-    // Call the rank-runner function
+    // Step 1: Collect fresh market data
+    const symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY'];
+    console.log('Collecting market data for:', symbols.join(', '));
+    
+    const dataResult = await collectMarketData(supabaseClient, symbols);
+    console.log(`Data collection completed: ${dataResult.successfulUpdates} successful, ${dataResult.failedUpdates} failed`);
+
+    // Step 2: Run ranking algorithm
+    console.log('Running ranking algorithm...');
     const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('rank-runner');
 
     if (rankError) {
@@ -33,8 +42,13 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Daily ranking job completed successfully',
-        result: rankResult,
+        message: 'Daily job completed successfully',
+        dataCollection: {
+          successful: dataResult.successfulUpdates,
+          failed: dataResult.failedUpdates,
+          symbols: dataResult.symbols
+        },
+        ranking: rankResult,
         timestamp: new Date().toISOString()
       }),
       { 

@@ -42,7 +42,7 @@ export async function collectMarketData(supabaseClient: any, symbols: string[]):
 
       const hasRecentData = existingData && existingData.length > 0;
       const lastDataDate = hasRecentData ? new Date(existingData[0].date) : null;
-      const isDataFresh = lastDataDate && (Date.now() - lastDataDate.getTime()) < 7 * 24 * 60 * 60 * 1000; // 7 days
+      const isDataFresh = lastDataDate && (Date.now() - lastDataDate.getTime()) < 24 * 60 * 60 * 1000; // 1 day
 
       if (isDataFresh) {
         console.log(`✓ ${symbol} has fresh data from ${lastDataDate?.toISOString().split('T')[0]}`);
@@ -56,7 +56,7 @@ export async function collectMarketData(supabaseClient: any, symbols: string[]):
         continue;
       }
 
-      // Fetch REAL daily data from Alpha Vantage
+      // Fetch real daily data from Alpha Vantage
       console.log(`Fetching real data for ${symbol}...`);
       
       const controller = new AbortController();
@@ -76,6 +76,7 @@ export async function collectMarketData(supabaseClient: any, symbols: string[]):
       const data = await response.json();
       console.log(`API Response for ${symbol}:`, Object.keys(data));
       
+      // Handle API errors and rate limits
       if (data['Error Message']) {
         console.error(`Alpha Vantage error for ${symbol}: ${data['Error Message']}`);
         failedUpdates++;
@@ -99,49 +100,12 @@ export async function collectMarketData(supabaseClient: any, symbols: string[]):
       const timeSeries = data['Time Series (Daily)'];
       if (!timeSeries || Object.keys(timeSeries).length === 0) {
         console.warn(`No time series data returned for ${symbol}. Response keys:`, Object.keys(data));
-        
-        // Try alternative API call
-        const altResponse = await fetch(
-          `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${avKey}`
-        );
-        
-        if (altResponse.ok) {
-          const altData = await altResponse.json();
-          const globalQuote = altData['Global Quote'];
-          
-          if (globalQuote && globalQuote['05. price']) {
-            const today = new Date().toISOString().split('T')[0];
-            const price = parseFloat(globalQuote['05. price']);
-            
-            // Create minimal price entry
-            const { error } = await supabaseClient
-              .from('price_history')
-              .upsert({
-                symbol,
-                date: today,
-                open: price,
-                high: price * 1.02,
-                low: price * 0.98,
-                close: price,
-                volume: 1000000
-              }, { onConflict: 'symbol,date' });
-              
-            if (!error) {
-              console.log(`✓ Updated ${symbol} with global quote data`);
-              successfulUpdates++;
-            } else {
-              console.error(`Database error for ${symbol}:`, error);
-              failedUpdates++;
-            }
-            continue;
-          }
-        }
-        
         failedUpdates++;
         continue;
       }
 
-      const dates = Object.keys(timeSeries).sort().slice(-30);
+      // Get the most recent 100 days of data
+      const dates = Object.keys(timeSeries).sort().slice(-100);
       
       let updatedDays = 0;
       for (const dateKey of dates) {
@@ -174,7 +138,7 @@ export async function collectMarketData(supabaseClient: any, symbols: string[]):
         console.log(`✓ Updated ${updatedDays} days of real data for ${symbol}`);
         successfulUpdates++;
 
-        // Fetch real news sentiment if Finnhub is available
+        // Collect news sentiment if Finnhub is available
         if (finnhubKey) {
           await collectNewsSentiment(supabaseClient, symbol, finnhubKey);
         }
@@ -182,13 +146,13 @@ export async function collectMarketData(supabaseClient: any, symbols: string[]):
         failedUpdates++;
       }
 
-      // Rate limiting
-      await new Promise(resolve => setTimeout(resolve, 15000));
+      // Rate limiting to avoid hitting API limits
+      await new Promise(resolve => setTimeout(resolve, 12000)); // 12 seconds between calls
       
     } catch (error) {
       console.error(`Failed to process real data for ${symbol}:`, error);
       failedUpdates++;
-      await new Promise(resolve => setTimeout(resolve, 30000));
+      await new Promise(resolve => setTimeout(resolve, 30000)); // Wait longer on error
     }
   }
 
@@ -199,9 +163,9 @@ export async function collectMarketData(supabaseClient: any, symbols: string[]):
 async function collectNewsSentiment(supabaseClient: any, symbol: string, finnhubKey: string) {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 7);
-    const weekAgoStr = yesterday.toISOString().split('T')[0];
+    const lastWeek = new Date();
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    const weekAgoStr = lastWeek.toISOString().split('T')[0];
 
     const newsResponse = await fetch(
       `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${weekAgoStr}&to=${today}&token=${finnhubKey}`,
