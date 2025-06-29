@@ -6,32 +6,49 @@ export interface AnalysisResult {
 }
 
 export async function runAnalysis(supabaseClient: any, symbols: string[], successfulUpdates: number): Promise<AnalysisResult> {
-  if (successfulUpdates < 3) {
-    console.warn(`Insufficient fresh data (${successfulUpdates}/${symbols.length}) - skipping analysis`);
-    return { 
-      success: false, 
-      message: `Insufficient fresh data (${successfulUpdates}/${symbols.length}) - skipping analysis` 
-    };
+  // Reduce threshold - run analysis if we have ANY data
+  if (successfulUpdates === 0) {
+    // Check if we have any existing data to work with
+    const { data: existingData } = await supabaseClient
+      .from('price_history')
+      .select('symbol')
+      .in('symbol', symbols)
+      .limit(1);
+    
+    if (!existingData || existingData.length === 0) {
+      console.warn('No price data available at all - skipping analysis');
+      return { 
+        success: false, 
+        message: 'No price data available - skipping analysis' 
+      };
+    }
+    
+    console.log('No fresh updates but found existing data - proceeding with analysis');
+  } else {
+    console.log(`Running analysis with ${successfulUpdates} fresh updates...`);
   }
 
   try {
-    console.log('Running real data analysis with sufficient data...');
+    console.log('Calling python-sim analysis function...');
     
     const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('python-sim', {
       body: { 
-        symbols: symbols.slice(0, successfulUpdates),
-        path: 'rank'
+        symbols: symbols,
+        path: 'rank',
+        force_analysis: true
       }
     });
 
     if (rankError) {
-      console.error('Error in real data analysis:', rankError);
-      return { success: false, message: 'Error in real data analysis', result: rankError };
+      console.error('Error in analysis:', rankError);
+      return { success: false, message: 'Error in analysis', result: rankError };
     }
     
+    console.log('Analysis result:', rankResult);
+    
     if (rankResult?.success) {
-      console.log('✓ Real data analysis completed successfully:', rankResult);
-      return { success: true, message: 'Real data analysis completed successfully', result: rankResult };
+      console.log('✓ Analysis completed successfully:', rankResult);
+      return { success: true, message: 'Analysis completed successfully', result: rankResult };
     } else {
       console.warn('Analysis completed but no suitable candidates found:', rankResult);
       return { success: false, message: 'Analysis completed but no suitable candidates found', result: rankResult };

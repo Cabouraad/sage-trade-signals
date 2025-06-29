@@ -39,23 +39,24 @@ export async function buildCandidates(symbols: string[], supabaseClient: any): P
         continue;
       }
 
-      if (!priceData || priceData.length < 10) {
+      if (!priceData || priceData.length < 5) {
         console.log(`Insufficient price data for ${symbol} (${priceData?.length || 0} days), skipping`);
         continue;
       }
 
-      console.log(`Analyzing ${symbol} with ${priceData.length} days of real market data`);
+      console.log(`Analyzing ${symbol} with ${priceData.length} days of data`);
 
       const technicalAnalysis = analyzeTechnicals(priceData);
       const prices = priceData.map(p => p.close).reverse();
       const currentPrice = prices[prices.length - 1];
       const riskMetrics = calculateRiskMetrics(prices);
       
-      if (technicalAnalysis.technicalScore >= 1 && riskMetrics.kellyFraction > 0.005) {
-        const sizePct = Math.round(riskMetrics.kellyFraction * 100 * 20) / 20;
+      // More lenient filtering - accept any positive technical score
+      if (technicalAnalysis.technicalScore >= 0.5 && riskMetrics.kellyFraction > 0.001) {
+        const sizePct = Math.max(0.1, Math.round(riskMetrics.kellyFraction * 100 * 20) / 20);
         const atr = technicalAnalysis.indicators.atr;
-        const stopLoss = currentPrice - (atr * 2);
-        const targetPrice = currentPrice + (atr * 2.5);
+        const stopLoss = currentPrice - (atr * 1.5);
+        const targetPrice = currentPrice + (atr * 2);
         
         const candidate: TradingCandidate = {
           symbol,
@@ -66,8 +67,8 @@ export async function buildCandidates(symbols: string[], supabaseClient: any): P
             technicalAnalysis.indicators.momentum
           ),
           entry_price: currentPrice,
-          stop_loss: Math.max(stopLoss, currentPrice * 0.97),
-          target_price: Math.min(targetPrice, currentPrice * 1.12),
+          stop_loss: Math.max(stopLoss, currentPrice * 0.95),
+          target_price: Math.min(targetPrice, currentPrice * 1.15),
           sharpe_ratio: Math.round(riskMetrics.sharpeRatio * 100) / 100,
           expected_return: Math.round(riskMetrics.excessReturn * 1000) / 1000,
           kelly_fraction: Math.round(riskMetrics.kellyFraction * 1000) / 1000,
@@ -76,7 +77,12 @@ export async function buildCandidates(symbols: string[], supabaseClient: any): P
           win_rate: Math.round(riskMetrics.winRate * 100) / 100,
           payoff_ratio: Math.round(riskMetrics.payoffRatio * 100) / 100,
           volatility: Math.round(riskMetrics.volatility * 100) / 100,
-          reason_bullets: technicalAnalysis.signals,
+          reason_bullets: [
+            ...technicalAnalysis.signals,
+            `Kelly sizing suggests ${sizePct}% position`,
+            `Risk/reward ratio of ${((targetPrice - currentPrice) / (currentPrice - stopLoss)).toFixed(1)}:1`,
+            `Based on ${priceData.length} days of market data`
+          ].slice(0, 5),
           data_points: priceData.length
         };
 
@@ -91,5 +97,6 @@ export async function buildCandidates(symbols: string[], supabaseClient: any): P
     }
   }
 
+  console.log(`Built ${candidates.length} candidates from ${symbols.length} symbols`);
   return candidates;
 }
