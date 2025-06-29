@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { User } from '@supabase/supabase-js';
@@ -33,8 +32,7 @@ const Dashboard = () => {
       }
     });
 
-    return () =>;
-    subscription.unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleSignOut = async () => {
