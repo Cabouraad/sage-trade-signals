@@ -16,6 +16,7 @@ const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [engineStatus, setEngineStatus] = useState<any>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     // Check current session
@@ -69,8 +70,8 @@ const Dashboard = () => {
         description: data?.message || "Daily ranking completed successfully",
       });
 
-      // Refresh the page components
-      window.location.reload();
+      // Trigger refresh of components instead of full page reload
+      setRefreshTrigger(prev => prev + 1);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -167,11 +168,11 @@ const Dashboard = () => {
           {/* System Test Component */}
           <SystemTest />
           
-          {/* Today's Pick */}
-          <TodaysPick />
+          {/* Today's Pick - pass refresh trigger to force re-fetch */}
+          <TodaysPick key={refreshTrigger} />
           
-          {/* Trade History */}
-          <TradeHistory />
+          {/* Trade History - pass refresh trigger to force re-fetch */}
+          <TradeHistory key={refreshTrigger} />
           
           {/* Strategy Performance */}
           <EquityCurve />
