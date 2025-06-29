@@ -1,0 +1,53 @@
+
+"""
+Unit tests for Kelly criterion calculation
+"""
+import pytest
+
+def calc_kelly(win_rate: float, payoff_ratio: float, cap: float = 0.25) -> float:
+    """Calculate Kelly fraction for position sizing"""
+    if win_rate <= 0 or win_rate >= 1 or payoff_ratio <= 0:
+        return 0.0
+    
+    kelly = win_rate - ((1 - win_rate) / payoff_ratio)
+    return max(0.0, min(kelly, cap))
+
+def test_calc_kelly_basic():
+    """Test basic Kelly calculation"""
+    # Win rate 60%, payoff ratio 1.5:1
+    win_rate = 0.6
+    payoff = 1.5
+    
+    kelly = calc_kelly(win_rate, payoff)
+    
+    # Expected: (1.5 * 0.6 - 0.4) / 1.5 = 0.333...
+    expected = (payoff * win_rate - (1 - win_rate)) / payoff
+    
+    assert abs(kelly - expected) < 0.001
+
+def test_calc_kelly_edge_cases():
+    """Test Kelly calculation edge cases"""
+    # Zero win rate
+    assert calc_kelly(0.0, 1.5) == 0.0
+    
+    # 100% win rate (impossible)
+    assert calc_kelly(1.0, 1.5) == 0.0
+    
+    # Negative payoff
+    assert calc_kelly(0.6, -1.0) == 0.0
+    
+    # Zero payoff
+    assert calc_kelly(0.6, 0.0) == 0.0
+
+def test_calc_kelly_capped():
+    """Test Kelly fraction capping"""
+    # Very high win rate and payoff should be capped at 25%
+    kelly = calc_kelly(0.9, 10.0, cap=0.25)
+    assert kelly <= 0.25
+
+if __name__ == "__main__":
+    # Run tests manually
+    test_calc_kelly_basic()
+    test_calc_kelly_edge_cases()
+    test_calc_kelly_capped()
+    print("All Kelly tests passed!")

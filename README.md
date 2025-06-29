@@ -1,73 +1,119 @@
-# Welcome to your Lovable project
 
-## Project info
+# TradeSage - AI-Powered Trading System
 
-**URL**: https://lovable.dev/projects/bc4d4df9-78dc-4de9-ad0d-86195b67a17d
+A comprehensive trading system that combines technical analysis, risk management, and AI-driven stock selection to generate daily trading recommendations.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- **Automated Daily Rankings**: Uses SMA crossover strategy with ATR-based risk management
+- **Kelly Criterion Position Sizing**: Optimal position sizing based on historical win rates
+- **Real-time Dashboard**: View today's pick, trade history, and system performance
+- **Supabase Integration**: Secure data storage and edge function processing
+- **Python Analytics Engine**: Advanced technical analysis and risk calculations
 
-**Use Lovable**
+## Quick Start
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/bc4d4df9-78dc-4de9-ad0d-86195b67a17d) and start prompting.
+```bash
+# 1. Clone the repository
+git clone <your-repo-url>
+cd tradesage
 
-Changes made via Lovable will be committed automatically to this repo.
+# 2. Install dependencies
+npm install
+pip install -r requirements.txt
 
-**Use your preferred IDE**
+# 3. Setup Supabase locally (optional)
+supabase start
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+# 4. Apply database migrations
+supabase db reset
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+# 5. Seed some sample data (optional)
+python -m app.tools.seed_dummy --symbols AAPL MSFT
 
-Follow these steps:
+# 6. Run ranking engine once
+python -m app.rank pick_trade
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# 7. Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Architecture
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Frontend (React/TypeScript)
+- **Dashboard**: Main overview with today's pick and system status
+- **Trade History**: Historical performance tracking
+- **System Tests**: Connectivity and data validation
 
-**Use GitHub Codespaces**
+### Backend (Supabase Edge Functions)
+- **daily-job**: Scheduled job runner (runs at 1 PM EST weekdays)
+- **rank-runner**: Core ranking algorithm implementation
+- **python-sim**: Advanced analytics and pattern recognition
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Database Schema
+- **price_history**: OHLCV stock data
+- **daily_pick**: Generated trade recommendations
+- **option_history**: Options data (future use)
+- **pattern_signal**: AI pattern recognition results
 
-## What technologies are used for this project?
+## Trading Strategy
 
-This project is built with:
+The system uses a simple but effective approach:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+1. **Signal Generation**: 20/50 SMA crossover detection
+2. **Risk Management**: ATR-based stop losses and targets (2:1 R/R)
+3. **Position Sizing**: Kelly Criterion with 25% maximum allocation
+4. **Universe**: Focus on liquid large-cap stocks (AAPL, MSFT, NVDA, TSLA, AMZN)
 
-## How can I deploy this project?
+## API Integration
 
-Simply open [Lovable](https://lovable.dev/projects/bc4d4df9-78dc-4de9-ad0d-86195b67a17d) and click on Share -> Publish.
+- **Alpha Vantage**: Primary stock data source
+- **Supabase**: Database and serverless functions
+- **No external dependencies**: Fully self-contained system
 
-## Can I connect a custom domain to my Lovable project?
+## Testing
 
-Yes, you can!
+```bash
+# Run Python tests
+pytest tests/ -v
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+# Run full CI pipeline locally
+npm run build
+npm run type-check
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Deployment
+
+The system is designed to run on Supabase with automatic edge function deployment:
+
+1. Connect your repository to Supabase
+2. Configure environment variables
+3. Deploy edge functions automatically
+4. Set up cron job for daily execution
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+DATABASE_URL=postgresql://...
+ALPHA_VANTAGE_KEY=your_key_here
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_key
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Run the test suite
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Disclaimer
+
+This system is for educational and research purposes only. Past performance does not guarantee future results. Always consult with a qualified financial advisor before making investment decisions.
