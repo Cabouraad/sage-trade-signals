@@ -12,45 +12,108 @@ export type Database = {
       daily_pick: {
         Row: {
           created_at: string | null
+          dark_pool_flag: boolean | null
           date: string
           entry_price: number
           expected_return: number | null
           id: string
+          kelly_fraction: number | null
           risk_amount: number | null
           sharpe_ratio: number
+          size_pct: number | null
           stop_loss: number
           strategy: string
           symbol: string
           target_price: number
+          uoa_flag: boolean | null
           user_id: string | null
         }
         Insert: {
           created_at?: string | null
+          dark_pool_flag?: boolean | null
           date?: string
           entry_price: number
           expected_return?: number | null
           id?: string
+          kelly_fraction?: number | null
           risk_amount?: number | null
           sharpe_ratio: number
+          size_pct?: number | null
           stop_loss: number
           strategy: string
           symbol: string
           target_price: number
+          uoa_flag?: boolean | null
           user_id?: string | null
         }
         Update: {
           created_at?: string | null
+          dark_pool_flag?: boolean | null
           date?: string
           entry_price?: number
           expected_return?: number | null
           id?: string
+          kelly_fraction?: number | null
           risk_amount?: number | null
           sharpe_ratio?: number
+          size_pct?: number | null
           stop_loss?: number
           strategy?: string
           symbol?: string
           target_price?: number
+          uoa_flag?: boolean | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      dark_pool_activity: {
+        Row: {
+          created_at: string | null
+          dollar_volume: number
+          id: string
+          shares: number
+          symbol: string
+          trade_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          dollar_volume: number
+          id?: string
+          shares: number
+          symbol: string
+          trade_date: string
+        }
+        Update: {
+          created_at?: string | null
+          dollar_volume?: number
+          id?: string
+          shares?: number
+          symbol?: string
+          trade_date?: string
+        }
+        Relationships: []
+      }
+      macro_state: {
+        Row: {
+          dxy: number | null
+          move: number | null
+          risk_regime: string | null
+          snapshot_ts: string
+          vix: number | null
+        }
+        Insert: {
+          dxy?: number | null
+          move?: number | null
+          risk_regime?: string | null
+          snapshot_ts: string
+          vix?: number | null
+        }
+        Update: {
+          dxy?: number | null
+          move?: number | null
+          risk_regime?: string | null
+          snapshot_ts?: string
+          vix?: number | null
         }
         Relationships: []
       }
@@ -192,6 +255,45 @@ export type Database = {
         }
         Update: {
           symbol?: string
+        }
+        Relationships: []
+      }
+      uoa_events: {
+        Row: {
+          contracts: number
+          created_at: string | null
+          event_ts: string
+          expiry: string
+          id: string
+          option_price: number | null
+          strike: number
+          symbol: string
+          traded_iv: number | null
+          type: string
+        }
+        Insert: {
+          contracts: number
+          created_at?: string | null
+          event_ts: string
+          expiry: string
+          id?: string
+          option_price?: number | null
+          strike: number
+          symbol: string
+          traded_iv?: number | null
+          type: string
+        }
+        Update: {
+          contracts?: number
+          created_at?: string | null
+          event_ts?: string
+          expiry?: string
+          id?: string
+          option_price?: number | null
+          strike?: number
+          symbol?: string
+          traded_iv?: number | null
+          type?: string
         }
         Relationships: []
       }
