@@ -54,6 +54,56 @@ export type Database = {
         }
         Relationships: []
       }
+      news_sentiment: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          date: string
+          headline: string
+          id: string
+          published_at: string | null
+          sentiment_score: number | null
+          source: string | null
+          summary: string | null
+          symbol: string
+          url: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          date?: string
+          headline: string
+          id?: string
+          published_at?: string | null
+          sentiment_score?: number | null
+          source?: string | null
+          summary?: string | null
+          symbol: string
+          url?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          date?: string
+          headline?: string
+          id?: string
+          published_at?: string | null
+          sentiment_score?: number | null
+          source?: string | null
+          summary?: string | null
+          symbol?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "news_sentiment_symbol_fkey"
+            columns: ["symbol"]
+            isOneToOne: false
+            referencedRelation: "symbols"
+            referencedColumns: ["symbol"]
+          },
+        ]
+      }
       option_history: {
         Row: {
           close: number | null

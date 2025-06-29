@@ -7,6 +7,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Simple sentiment analysis function
+function analyzeSentiment(text: string): number {
+  const positiveWords = ['good', 'great', 'excellent', 'positive', 'strong', 'growth', 'profit', 'gain', 'success', 'bullish', 'buy', 'upgrade', 'outperform'];
+  const negativeWords = ['bad', 'poor', 'negative', 'weak', 'loss', 'decline', 'fail', 'bearish', 'sell', 'downgrade', 'underperform', 'risk'];
+  
+  const words = text.toLowerCase().split(/\W+/);
+  let score = 0;
+  
+  words.forEach(word => {
+    if (positiveWords.includes(word)) score += 1;
+    if (negativeWords.includes(word)) score -= 1;
+  });
+  
+  // Normalize to -1 to 1 range
+  const maxWords = Math.max(positiveWords.length, negativeWords.length);
+  return Math.max(-1, Math.min(1, score / maxWords));
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -20,8 +38,10 @@ serve(async (req) => {
 
     console.log('Starting daily job...');
 
-    // 1. Fetch market data from Alpha Vantage
+    // Get API keys
     const avKey = Deno.env.get('AV_KEY');
+    const finnhubKey = Deno.env.get('FINNHUB_KEY');
+    
     if (!avKey) {
       throw new Error('Alpha Vantage API key not found');
     }
@@ -71,6 +91,47 @@ serve(async (req) => {
           }
         }
 
+        // Fetch news sentiment from Finnhub if API key is available
+        if (finnhubKey) {
+          try {
+            const today = new Date().toISOString().split('T')[0];
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+            const newsResponse = await fetch(
+              `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${yesterdayStr}&to=${today}&token=${finnhubKey}`
+            );
+
+            if (newsResponse.ok) {
+              const newsData = await newsResponse.json();
+              
+              // Process and store news with sentiment
+              for (const article of newsData.slice(0, 5)) { // Limit to 5 articles per symbol
+                const sentimentScore = analyzeSentiment(article.headline + ' ' + (article.summary || ''));
+                
+                await supabaseClient
+                  .from('news_sentiment')
+                  .upsert({
+                    symbol,
+                    headline: article.headline,
+                    summary: article.summary,
+                    url: article.url,
+                    sentiment_score: sentimentScore,
+                    published_at: new Date(article.datetime * 1000).toISOString(),
+                    source: article.source,
+                    category: article.category,
+                    date: today
+                  }, { onConflict: 'symbol,headline,date' });
+              }
+              
+              console.log(`Updated news sentiment for ${symbol}`);
+            }
+          } catch (newsError) {
+            console.error(`Error fetching news for ${symbol}:`, newsError);
+          }
+        }
+
         // Add delay to respect API rate limits
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
@@ -101,7 +162,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: 'Daily job completed successfully',
-        processed_symbols: symbols.length
+        processed_symbols: symbols.length,
+        finnhub_enabled: !!finnhubKey
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
