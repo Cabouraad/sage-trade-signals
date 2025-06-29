@@ -24,13 +24,13 @@ export const SystemTest = () => {
 
     // Test 1: Database Connection
     try {
-      const { data, error } = await supabase.from('symbols').select('symbol').limit(1);
+      const { data, error } = await supabase.from('price_history').select('symbol').limit(1);
       if (error) throw error;
       testResults.push({
         name: 'Database Connection',
         status: 'success',
         message: 'Successfully connected to Supabase',
-        details: { symbolsFound: data?.length || 0 }
+        details: { recordsFound: data?.length || 0 }
       });
     } catch (error: any) {
       testResults.push({
@@ -61,7 +61,7 @@ export const SystemTest = () => {
           'No price data found',
         details: { 
           recordCount: data?.length || 0,
-          symbols: uniqueSymbols.slice(0, 5),
+          symbols: uniqueSymbols,
           latestDate
         }
       });
@@ -86,73 +86,31 @@ export const SystemTest = () => {
       console.log('Daily job response:', data);
       
       testResults.push({
-        name: 'Daily Job Execution',
+        name: 'Daily Ranking Job',
         status: data?.success ? 'success' : 'warning',
         message: data?.message || 'Daily job completed',
         details: {
-          dataCollection: data?.data_collection,
-          analysisCompleted: data?.analysis_completed,
+          result: data?.result,
           timestamp: data?.timestamp
         }
       });
     } catch (error: any) {
       console.error('Daily job test error:', error);
       testResults.push({
-        name: 'Daily Job Execution',
+        name: 'Daily Ranking Job',
         status: 'error',
         message: `Daily job failed: ${error.message}`,
         details: { error: error }
       });
     }
 
-    // Test 4: Analysis Function
+    // Test 4: Daily Pick Storage
     try {
-      console.log('Invoking python-sim analysis function...');
-      const { data, error } = await supabase.functions.invoke('python-sim', {
-        body: { 
-          symbols: ['AAPL', 'MSFT', 'GOOGL'],
-          path: 'rank',
-          force_analysis: true
-        }
-      });
-      
-      if (error) {
-        console.error('Analysis error:', error);
-        throw error;
-      }
-      
-      console.log('Analysis response:', data);
-      
-      testResults.push({
-        name: 'Analysis Engine',
-        status: data?.success ? 'success' : 'warning',
-        message: data?.message || 'Analysis completed',
-        details: {
-          selectedPick: data?.selected_pick?.symbol,
-          totalCandidates: data?.total_candidates,
-          analysisMethod: data?.analysis_method
-        }
-      });
-    } catch (error: any) {
-      console.error('Analysis test error:', error);
-      testResults.push({
-        name: 'Analysis Engine',
-        status: 'error',
-        message: `Analysis failed: ${error.message}`,
-        details: { error: error }
-      });
-    }
-
-    // Wait a moment before checking daily pick storage to allow database write to complete
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Test 5: Daily Pick Storage (check after analysis)
-    try {
-      const today = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('daily_pick')
         .select('*')
-        .eq('date', today)
+        .order('pick_ts', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       if (error) throw error;
@@ -161,13 +119,13 @@ export const SystemTest = () => {
         name: 'Daily Pick Storage',
         status: data ? 'success' : 'warning',
         message: data ? 
-          `Today's pick found: ${data.symbol}` : 
-          'No pick stored for today (may need to run analysis first)',
+          `Latest pick found: ${data.symbol}` : 
+          'No picks stored yet (run daily job first)',
         details: data ? {
           symbol: data.symbol,
-          strategy: data.strategy,
-          entryPrice: data.entry_price,
-          sharpeRatio: data.sharpe_ratio
+          tradeType: data.trade_type,
+          entryPrice: data.entry,
+          kellyFraction: data.kelly_frac
         } : null
       });
     } catch (error: any) {
@@ -177,17 +135,6 @@ export const SystemTest = () => {
         message: `Daily pick check failed: ${error.message}`
       });
     }
-
-    // Test 6: API Keys Configuration
-    const apiKeysTest: TestResult = {
-      name: 'API Keys Configuration',
-      status: 'warning',
-      message: 'Cannot verify API keys from frontend',
-      details: {
-        note: 'API keys are configured in Supabase Edge Functions environment'
-      }
-    };
-    testResults.push(apiKeysTest);
 
     setResults(testResults);
     setTesting(false);
@@ -223,7 +170,7 @@ export const SystemTest = () => {
           System Health Check
         </CardTitle>
         <CardDescription className="text-slate-400">
-          Test all components of the trading system
+          Test all components of the simplified ranking system
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

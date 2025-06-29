@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { User } from '@supabase/supabase-js';
@@ -53,6 +54,11 @@ const Dashboard = () => {
 
   const runDailyJob = async () => {
     try {
+      toast({
+        title: "Starting Analysis",
+        description: "Running daily ranking algorithm...",
+      });
+
       const { data, error } = await supabase.functions.invoke('daily-job');
       
       if (error) throw error;
@@ -60,8 +66,11 @@ const Dashboard = () => {
       setEngineStatus(data);
       toast({
         title: "Success",
-        description: "Enhanced daily job completed successfully",
+        description: data?.message || "Daily ranking completed successfully",
       });
+
+      // Refresh the page components
+      window.location.reload();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -93,7 +102,7 @@ const Dashboard = () => {
             <span className="text-2xl font-bold">TradeSage</span>
             <Badge variant="outline" className="ml-2 border-green-500/30 text-green-300 bg-green-500/10">
               <Brain className="h-3 w-3 mr-1" />
-              Enhanced AI
+              Simplified Engine
             </Badge>
           </div>
           <div className="flex items-center gap-4">
@@ -102,7 +111,7 @@ const Dashboard = () => {
               className="bg-purple-600 hover:bg-purple-700"
             >
               <Zap className="h-4 w-4 mr-2" />
-              Run Enhanced Analysis
+              Run Daily Ranking
             </Button>
             <span className="text-slate-300">Welcome, {user.email}</span>
             <Button
@@ -121,12 +130,12 @@ const Dashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="grid gap-6">
-          {/* Hero Section with Enhanced Badges */}
+          {/* Hero Section */}
           <div className="text-center mb-8">
             <div className="flex justify-center gap-2 mb-4">
               <Badge className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-semibold">
                 <Target className="h-3 w-3 mr-1" />
-                Trade of the Day
+                Daily Pick System
               </Badge>
               <Badge variant="outline" className="border-purple-500/30 text-purple-300 bg-purple-500/10 px-4 py-2">
                 <Brain className="h-3 w-3 mr-1" />
@@ -134,7 +143,7 @@ const Dashboard = () => {
               </Badge>
               <Badge variant="outline" className="border-blue-500/30 text-blue-300 bg-blue-500/10 px-4 py-2">
                 <Activity className="h-3 w-3 mr-1" />
-                Pattern Recognition
+                SMA Crossover
               </Badge>
             </div>
             
@@ -142,9 +151,13 @@ const Dashboard = () => {
               <Card className="bg-slate-800/30 border-slate-700 mb-6">
                 <CardContent className="p-4">
                   <div className="text-sm text-slate-300">
-                    <strong>Enhanced Engine Status:</strong> {engineStatus.message}
-                    <br />
-                    Processed {engineStatus.processed_symbols} symbols with features: {engineStatus.features_enabled?.join(', ')}
+                    <strong>Latest Run:</strong> {engineStatus.message}
+                    {engineStatus.result && (
+                      <>
+                        <br />
+                        Selected: {engineStatus.result.pick?.symbol} | Candidates: {engineStatus.result.totalCandidates}
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -154,7 +167,7 @@ const Dashboard = () => {
           {/* System Test Component */}
           <SystemTest />
           
-          {/* Today's Pick with Enhanced Features */}
+          {/* Today's Pick */}
           <TodaysPick />
           
           {/* Trade History */}
@@ -163,15 +176,15 @@ const Dashboard = () => {
           {/* Strategy Performance */}
           <EquityCurve />
           
-          {/* Feature Overview */}
+          {/* System Overview */}
           <Card className="bg-slate-800/50 border-slate-700">
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
                 <Brain className="h-5 w-5 text-purple-400" />
-                Enhanced Trading Engine
+                Simplified Trading Engine
               </CardTitle>
               <CardDescription className="text-slate-400">
-                Advanced AI-powered features for systematic trading
+                Streamlined ranking system with Kelly position sizing
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -179,30 +192,30 @@ const Dashboard = () => {
                 <div className="bg-slate-700/30 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-purple-400 mb-2">
                     <Target className="h-4 w-4" />
-                    <span className="font-medium">Kelly Criterion</span>
+                    <span className="font-medium">SMA Crossover</span>
                   </div>
                   <p className="text-sm text-slate-300">
-                    Optimal position sizing based on historical win rates and risk-reward ratios
+                    Simple 20/50 SMA crossover signals for trend identification
                   </p>
                 </div>
                 
                 <div className="bg-slate-700/30 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-blue-400 mb-2">
                     <Activity className="h-4 w-4" />
-                    <span className="font-medium">Pattern Recognition</span>
+                    <span className="font-medium">ATR-Based Stops</span>
                   </div>
                   <p className="text-sm text-slate-300">
-                    CNN-based chart pattern detection with confidence scoring
+                    Dynamic stop losses and targets using Average True Range
                   </p>
                 </div>
                 
                 <div className="bg-slate-700/30 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-green-400 mb-2">
                     <Shield className="h-4 w-4" />
-                    <span className="font-medium">Risk Management</span>
+                    <span className="font-medium">Kelly Sizing</span>
                   </div>
                   <p className="text-sm text-slate-300">
-                    ATR-based stops, regime filtering, and robustness testing
+                    Optimal position sizing based on win rate and payoff ratio
                   </p>
                 </div>
               </div>

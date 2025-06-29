@@ -11,61 +11,37 @@ export type Database = {
     Tables: {
       daily_pick: {
         Row: {
-          created_at: string | null
-          dark_pool_flag: boolean | null
-          date: string
-          entry_price: number
-          expected_return: number | null
-          id: string
-          kelly_fraction: number | null
+          entry: number
+          kelly_frac: number | null
+          pick_ts: string
           reason_bullets: string[] | null
-          risk_amount: number | null
-          sharpe_ratio: number
           size_pct: number | null
-          stop_loss: number
-          strategy: string
+          stop: number
           symbol: string
-          target_price: number
-          uoa_flag: boolean | null
-          user_id: string | null
+          target: number
+          trade_type: string
         }
         Insert: {
-          created_at?: string | null
-          dark_pool_flag?: boolean | null
-          date?: string
-          entry_price: number
-          expected_return?: number | null
-          id?: string
-          kelly_fraction?: number | null
+          entry: number
+          kelly_frac?: number | null
+          pick_ts?: string
           reason_bullets?: string[] | null
-          risk_amount?: number | null
-          sharpe_ratio: number
           size_pct?: number | null
-          stop_loss: number
-          strategy: string
+          stop: number
           symbol: string
-          target_price: number
-          uoa_flag?: boolean | null
-          user_id?: string | null
+          target: number
+          trade_type: string
         }
         Update: {
-          created_at?: string | null
-          dark_pool_flag?: boolean | null
-          date?: string
-          entry_price?: number
-          expected_return?: number | null
-          id?: string
-          kelly_fraction?: number | null
+          entry?: number
+          kelly_frac?: number | null
+          pick_ts?: string
           reason_bullets?: string[] | null
-          risk_amount?: number | null
-          sharpe_ratio?: number
           size_pct?: number | null
-          stop_loss?: number
-          strategy?: string
+          stop?: number
           symbol?: string
-          target_price?: number
-          uoa_flag?: boolean | null
-          user_id?: string | null
+          target?: number
+          trade_type?: string
         }
         Relationships: []
       }
@@ -183,7 +159,7 @@ export type Database = {
         }
         Insert: {
           close?: number | null
-          date?: string
+          date: string
           expiry: string
           iv?: number | null
           oi?: number | null
@@ -201,20 +177,11 @@ export type Database = {
           symbol?: string
           type?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "option_history_symbol_fkey"
-            columns: ["symbol"]
-            isOneToOne: false
-            referencedRelation: "symbols"
-            referencedColumns: ["symbol"]
-          },
-        ]
+        Relationships: []
       }
       pattern_signal: {
         Row: {
           confidence: number
-          created_at: string | null
           id: string
           pattern: string
           scan_date: string
@@ -222,7 +189,6 @@ export type Database = {
         }
         Insert: {
           confidence: number
-          created_at?: string | null
           id?: string
           pattern: string
           scan_date: string
@@ -230,7 +196,6 @@ export type Database = {
         }
         Update: {
           confidence?: number
-          created_at?: string | null
           id?: string
           pattern?: string
           scan_date?: string
@@ -266,15 +231,7 @@ export type Database = {
           symbol?: string
           volume?: number
         }
-        Relationships: [
-          {
-            foreignKeyName: "price_history_symbol_fkey"
-            columns: ["symbol"]
-            isOneToOne: false
-            referencedRelation: "symbols"
-            referencedColumns: ["symbol"]
-          },
-        ]
+        Relationships: []
       }
       symbols: {
         Row: {

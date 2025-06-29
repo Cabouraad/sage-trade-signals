@@ -7,15 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { History } from "lucide-react";
 
 interface TradeRecord {
-  id: string;
-  date: string;
-  strategy: string;
+  pick_ts: string;
   symbol: string;
-  entry_price: number;
-  stop_loss: number;
-  target_price: number;
-  sharpe_ratio: number;
-  expected_return: number;
+  trade_type: string;
+  entry: number;
+  stop: number;
+  target: number;
+  kelly_frac: number;
+  size_pct: number;
 }
 
 export const TradeHistory = () => {
@@ -31,7 +30,7 @@ export const TradeHistory = () => {
       const { data, error } = await supabase
         .from('daily_pick')
         .select('*')
-        .order('date', { ascending: false })
+        .order('pick_ts', { ascending: false })
         .limit(30);
 
       if (error) throw error;
@@ -82,11 +81,11 @@ export const TradeHistory = () => {
                 <TableRow className="border-slate-700">
                   <TableHead className="text-slate-300">Date</TableHead>
                   <TableHead className="text-slate-300">Symbol</TableHead>
-                  <TableHead className="text-slate-300">Strategy</TableHead>
+                  <TableHead className="text-slate-300">Type</TableHead>
                   <TableHead className="text-slate-300">Entry</TableHead>
                   <TableHead className="text-slate-300">Target</TableHead>
                   <TableHead className="text-slate-300">Stop</TableHead>
-                  <TableHead className="text-slate-300">Sharpe</TableHead>
+                  <TableHead className="text-slate-300">Kelly %</TableHead>
                   <TableHead className="text-slate-300">P/L</TableHead>
                 </TableRow>
               </TableHeader>
@@ -96,29 +95,29 @@ export const TradeHistory = () => {
                   const pnlPercent = (pnl * 100).toFixed(1);
                   
                   return (
-                    <TableRow key={trade.id} className="border-slate-700">
+                    <TableRow key={trade.pick_ts} className="border-slate-700">
                       <TableCell className="text-slate-300">
-                        {new Date(trade.date).toLocaleDateString()}
+                        {new Date(trade.pick_ts).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-white font-medium">
                         {trade.symbol}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="border-slate-600 text-slate-300">
-                          {trade.strategy.replace(/-/g, ' ')}
+                          {trade.trade_type.replace(/_/g, ' ')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-slate-300">
-                        ${trade.entry_price.toFixed(2)}
+                        ${trade.entry.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-slate-300">
-                        ${trade.target_price.toFixed(2)}
+                        ${trade.target.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-slate-300">
-                        ${trade.stop_loss.toFixed(2)}
+                        ${trade.stop.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-slate-300">
-                        {trade.sharpe_ratio.toFixed(2)}
+                        {(trade.kelly_frac * 100).toFixed(1)}%
                       </TableCell>
                       <TableCell>
                         <span className={pnl >= 0 ? 'text-green-400' : 'text-red-400'}>

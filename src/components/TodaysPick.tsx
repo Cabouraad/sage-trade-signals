@@ -7,17 +7,13 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Target, Shield, DollarSign, TrendingUp, Percent, Brain } from "lucide-react";
 
 interface DailyPick {
-  id: string;
-  date: string;
-  strategy: string;
+  pick_ts: string;
   symbol: string;
-  entry_price: number;
-  stop_loss: number;
-  target_price: number;
-  sharpe_ratio: number;
-  expected_return: number;
-  risk_amount: number;
-  kelly_fraction: number;
+  trade_type: string;
+  entry: number;
+  stop: number;
+  target: number;
+  kelly_frac: number;
   size_pct: number;
   reason_bullets: string[];
 }
@@ -32,12 +28,12 @@ export const TodaysPick = () => {
 
   const fetchTodaysPick = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      
+      // Get the most recent pick
       const { data, error } = await supabase
         .from('daily_pick')
         .select('*')
-        .eq('date', today)
+        .order('pick_ts', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (error) throw error;
@@ -68,7 +64,7 @@ export const TodaysPick = () => {
             Today's Pick
           </CardTitle>
           <CardDescription className="text-slate-400">
-            No trading recommendation available for today
+            No trading recommendation available
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -80,7 +76,8 @@ export const TodaysPick = () => {
     );
   }
 
-  const riskRewardRatio = ((todaysPick.target_price - todaysPick.entry_price) / (todaysPick.entry_price - todaysPick.stop_loss)).toFixed(2);
+  const riskRewardRatio = ((todaysPick.target - todaysPick.entry) / (todaysPick.entry - todaysPick.stop)).toFixed(2);
+  const expectedReturn = ((todaysPick.target - todaysPick.entry) / todaysPick.entry * 100).toFixed(1);
 
   return (
     <Card className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 border-purple-500/20">
@@ -90,7 +87,7 @@ export const TodaysPick = () => {
           Today's Pick
         </CardTitle>
         <CardDescription className="text-slate-300">
-          AI-selected trade recommendation for {new Date(todaysPick.date).toLocaleDateString()}
+          AI-selected trade recommendation for {new Date(todaysPick.pick_ts).toLocaleDateString()}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -99,7 +96,7 @@ export const TodaysPick = () => {
             <h3 className="text-2xl font-bold text-white">{todaysPick.symbol}</h3>
             <div className="flex gap-2 mt-1">
               <Badge variant="secondary" className="bg-purple-600/20 text-purple-300">
-                {todaysPick.strategy.replace(/-/g, ' ').toUpperCase()}
+                {todaysPick.trade_type.replace(/_/g, ' ').toUpperCase()}
               </Badge>
               {todaysPick.size_pct && (
                 <Badge variant="outline" className="border-blue-500/30 text-blue-300 bg-blue-500/10">
@@ -110,13 +107,11 @@ export const TodaysPick = () => {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-sm text-slate-400">Sharpe Ratio</div>
-            <div className="text-xl font-bold text-green-400">{todaysPick.sharpe_ratio.toFixed(2)}</div>
-            {todaysPick.kelly_fraction && (
-              <div className="text-xs text-slate-500 mt-1">
-                Kelly: {(todaysPick.kelly_fraction * 100).toFixed(1)}%
-              </div>
-            )}
+            <div className="text-sm text-slate-400">Kelly Fraction</div>
+            <div className="text-xl font-bold text-green-400">{(todaysPick.kelly_frac * 100).toFixed(1)}%</div>
+            <div className="text-xs text-slate-500 mt-1">
+              Risk/Reward: 1:{riskRewardRatio}
+            </div>
           </div>
         </div>
 
@@ -126,7 +121,7 @@ export const TodaysPick = () => {
               <DollarSign className="h-4 w-4" />
               <span className="text-sm font-medium">Entry Price</span>
             </div>
-            <div className="text-xl font-bold text-white">${todaysPick.entry_price.toFixed(2)}</div>
+            <div className="text-xl font-bold text-white">${todaysPick.entry.toFixed(2)}</div>
           </div>
 
           <div className="bg-slate-800/50 rounded-lg p-4">
@@ -134,7 +129,7 @@ export const TodaysPick = () => {
               <Shield className="h-4 w-4" />
               <span className="text-sm font-medium">Stop Loss</span>
             </div>
-            <div className="text-xl font-bold text-white">${todaysPick.stop_loss.toFixed(2)}</div>
+            <div className="text-xl font-bold text-white">${todaysPick.stop.toFixed(2)}</div>
           </div>
 
           <div className="bg-slate-800/50 rounded-lg p-4">
@@ -142,20 +137,18 @@ export const TodaysPick = () => {
               <TrendingUp className="h-4 w-4" />
               <span className="text-sm font-medium">Target Price</span>
             </div>
-            <div className="text-xl font-bold text-white">${todaysPick.target_price.toFixed(2)}</div>
+            <div className="text-xl font-bold text-white">${todaysPick.target.toFixed(2)}</div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-700">
           <div>
             <div className="text-sm text-slate-400">Expected Return</div>
-            <div className="text-lg font-semibold text-green-400">
-              {todaysPick.expected_return ? `${(todaysPick.expected_return * 100).toFixed(1)}%` : 'N/A'}
-            </div>
+            <div className="text-lg font-semibold text-green-400">+{expectedReturn}%</div>
           </div>
           <div>
-            <div className="text-sm text-slate-400">Risk/Reward Ratio</div>
-            <div className="text-lg font-semibold text-purple-400">1:{riskRewardRatio}</div>
+            <div className="text-sm text-slate-400">Position Size</div>
+            <div className="text-lg font-semibold text-purple-400">{todaysPick.size_pct}% of equity</div>
           </div>
         </div>
 
