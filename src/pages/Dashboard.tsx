@@ -1,8 +1,10 @@
+
 import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { User } from '@supabase/supabase-js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { TrendingUp, LogOut, Target, Shield, DollarSign } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { TodaysPick } from "@/components/TodaysPick";
@@ -87,14 +89,21 @@ const Dashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="grid gap-6">
+          {/* Hero Section with Badge */}
+          <div className="text-center mb-8">
+            <Badge className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-semibold mb-4">
+              Trade of the Day
+            </Badge>
+          </div>
+          
           {/* Today's Pick */}
           <TodaysPick />
           
-          {/* Strategy Performance */}
-          <EquityCurve />
-          
           {/* Trade History */}
           <TradeHistory />
+          
+          {/* Strategy Performance - moved below the fold */}
+          <EquityCurve />
         </div>
       </main>
     </div>
