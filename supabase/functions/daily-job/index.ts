@@ -36,7 +36,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('Starting daily job...');
+    console.log('Starting enhanced daily job...');
 
     // Get API keys
     const avKey = Deno.env.get('AV_KEY');
@@ -47,9 +47,9 @@ serve(async (req) => {
     }
 
     // Sample symbols to track
-    const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
+    const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'AMZN', 'META', 'NFLX', 'AMD', 'ADBE'];
     
-    // Fetch and store price data
+    // 1. Fetch and store price data (existing logic)
     for (const symbol of symbols) {
       try {
         // Insert symbol if not exists
@@ -139,7 +139,26 @@ serve(async (req) => {
       }
     }
 
-    // 2. Call Python container /rank endpoint
+    // 2. Call Python container /pattern_scan endpoint
+    try {
+      const containerUrl = Deno.env.get('PYTHON_CONTAINER_URL') || 'http://localhost:8000';
+      const patternResponse = await fetch(`${containerUrl}/pattern_scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols })
+      });
+
+      if (patternResponse.ok) {
+        const patternResult = await patternResponse.json();
+        console.log('Pattern scanning completed:', patternResult);
+      } else {
+        console.error('Failed to call /pattern_scan endpoint:', patternResponse.status);
+      }
+    } catch (error) {
+      console.error('Error calling pattern scan endpoint:', error);
+    }
+
+    // 3. Call Python container /rank endpoint with enhanced logic
     try {
       const containerUrl = Deno.env.get('PYTHON_CONTAINER_URL') || 'http://localhost:8000';
       const rankResponse = await fetch(`${containerUrl}/rank`, {
@@ -150,7 +169,7 @@ serve(async (req) => {
 
       if (rankResponse.ok) {
         const rankResult = await rankResponse.json();
-        console.log('Strategy ranking completed:', rankResult);
+        console.log('Enhanced strategy ranking completed:', rankResult);
       } else {
         console.error('Failed to call /rank endpoint:', rankResponse.status);
       }
@@ -161,9 +180,10 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Daily job completed successfully',
+        message: 'Enhanced daily job completed successfully',
         processed_symbols: symbols.length,
-        finnhub_enabled: !!finnhubKey
+        finnhub_enabled: !!finnhubKey,
+        features_enabled: ['pattern_scanning', 'kelly_sizing', 'robustness_testing', 'regime_filtering']
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -171,7 +191,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Daily job error:', error);
+    console.error('Enhanced daily job error:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 

@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Target, Shield, DollarSign, TrendingUp } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Target, Shield, DollarSign, TrendingUp, Percent, Brain } from "lucide-react";
 
 interface DailyPick {
   id: string;
@@ -16,6 +17,9 @@ interface DailyPick {
   sharpe_ratio: number;
   expected_return: number;
   risk_amount: number;
+  kelly_fraction: number;
+  size_pct: number;
+  reason_bullets: string[];
 }
 
 export const TodaysPick = () => {
@@ -93,13 +97,26 @@ export const TodaysPick = () => {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-2xl font-bold text-white">{todaysPick.symbol}</h3>
-            <Badge variant="secondary" className="mt-1 bg-purple-600/20 text-purple-300">
-              {todaysPick.strategy.replace(/-/g, ' ').toUpperCase()}
-            </Badge>
+            <div className="flex gap-2 mt-1">
+              <Badge variant="secondary" className="bg-purple-600/20 text-purple-300">
+                {todaysPick.strategy.replace(/-/g, ' ').toUpperCase()}
+              </Badge>
+              {todaysPick.size_pct && (
+                <Badge variant="outline" className="border-blue-500/30 text-blue-300 bg-blue-500/10">
+                  <Percent className="h-3 w-3 mr-1" />
+                  Size: {todaysPick.size_pct}% of equity
+                </Badge>
+              )}
+            </div>
           </div>
           <div className="text-right">
             <div className="text-sm text-slate-400">Sharpe Ratio</div>
             <div className="text-xl font-bold text-green-400">{todaysPick.sharpe_ratio.toFixed(2)}</div>
+            {todaysPick.kelly_fraction && (
+              <div className="text-xs text-slate-500 mt-1">
+                Kelly: {(todaysPick.kelly_fraction * 100).toFixed(1)}%
+              </div>
+            )}
           </div>
         </div>
 
@@ -141,6 +158,29 @@ export const TodaysPick = () => {
             <div className="text-lg font-semibold text-purple-400">1:{riskRewardRatio}</div>
           </div>
         </div>
+
+        {todaysPick.reason_bullets && todaysPick.reason_bullets.length > 0 && (
+          <Accordion type="single" collapsible className="border-t border-slate-700 pt-4">
+            <AccordionItem value="reasoning" className="border-slate-700">
+              <AccordionTrigger className="text-white hover:text-purple-300">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-purple-400" />
+                  Why we picked this trade
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-300">
+                <ul className="space-y-2 mt-2">
+                  {todaysPick.reason_bullets.map((bullet, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <div className="w-1.5 h-1.5 bg-purple-400 rounded-full mt-2 flex-shrink-0"></div>
+                      <span>{bullet}</span>
+                    </li>
+                  ))}
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
       </CardContent>
     </Card>
   );

@@ -18,6 +18,7 @@ export type Database = {
           expected_return: number | null
           id: string
           kelly_fraction: number | null
+          reason_bullets: string[] | null
           risk_amount: number | null
           sharpe_ratio: number
           size_pct: number | null
@@ -36,6 +37,7 @@ export type Database = {
           expected_return?: number | null
           id?: string
           kelly_fraction?: number | null
+          reason_bullets?: string[] | null
           risk_amount?: number | null
           sharpe_ratio: number
           size_pct?: number | null
@@ -54,6 +56,7 @@ export type Database = {
           expected_return?: number | null
           id?: string
           kelly_fraction?: number | null
+          reason_bullets?: string[] | null
           risk_amount?: number | null
           sharpe_ratio?: number
           size_pct?: number | null
@@ -207,6 +210,33 @@ export type Database = {
             referencedColumns: ["symbol"]
           },
         ]
+      }
+      pattern_signal: {
+        Row: {
+          confidence: number
+          created_at: string | null
+          id: string
+          pattern: string
+          scan_date: string
+          symbol: string
+        }
+        Insert: {
+          confidence: number
+          created_at?: string | null
+          id?: string
+          pattern: string
+          scan_date: string
+          symbol: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string | null
+          id?: string
+          pattern?: string
+          scan_date?: string
+          symbol?: string
+        }
+        Relationships: []
       }
       price_history: {
         Row: {
