@@ -49,7 +49,7 @@ serve(async (req) => {
     // Sample symbols to track
     const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'AMZN', 'META', 'NFLX', 'AMD', 'ADBE'];
     
-    // 1. Fetch and store price data (existing logic)
+    // 1. Fetch and store price data
     for (const symbol of symbols) {
       try {
         // Insert symbol if not exists
@@ -139,42 +139,20 @@ serve(async (req) => {
       }
     }
 
-    // 2. Call Python container /pattern_scan endpoint
+    // 2. Call the existing python-sim function for ranking
     try {
-      const containerUrl = Deno.env.get('PYTHON_CONTAINER_URL') || 'http://localhost:8000';
-      const patternResponse = await fetch(`${containerUrl}/pattern_scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols })
+      console.log('Calling python-sim function for strategy ranking...');
+      const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('python-sim/rank', {
+        body: { symbols }
       });
 
-      if (patternResponse.ok) {
-        const patternResult = await patternResponse.json();
-        console.log('Pattern scanning completed:', patternResult);
+      if (rankError) {
+        console.error('Error calling python-sim rank:', rankError);
       } else {
-        console.error('Failed to call /pattern_scan endpoint:', patternResponse.status);
+        console.log('Strategy ranking completed:', rankResult);
       }
     } catch (error) {
-      console.error('Error calling pattern scan endpoint:', error);
-    }
-
-    // 3. Call Python container /rank endpoint with enhanced logic
-    try {
-      const containerUrl = Deno.env.get('PYTHON_CONTAINER_URL') || 'http://localhost:8000';
-      const rankResponse = await fetch(`${containerUrl}/rank`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols })
-      });
-
-      if (rankResponse.ok) {
-        const rankResult = await rankResponse.json();
-        console.log('Enhanced strategy ranking completed:', rankResult);
-      } else {
-        console.error('Failed to call /rank endpoint:', rankResponse.status);
-      }
-    } catch (error) {
-      console.error('Error calling Python container:', error);
+      console.error('Error calling python-sim function:', error);
     }
 
     return new Response(
@@ -183,7 +161,7 @@ serve(async (req) => {
         message: 'Enhanced daily job completed successfully',
         processed_symbols: symbols.length,
         finnhub_enabled: !!finnhubKey,
-        features_enabled: ['pattern_scanning', 'kelly_sizing', 'robustness_testing', 'regime_filtering']
+        features_enabled: ['kelly_sizing', 'news_sentiment', 'strategy_ranking']
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
