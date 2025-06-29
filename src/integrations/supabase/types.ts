@@ -9,7 +9,142 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      daily_pick: {
+        Row: {
+          created_at: string | null
+          date: string
+          entry_price: number
+          expected_return: number | null
+          id: string
+          risk_amount: number | null
+          sharpe_ratio: number
+          stop_loss: number
+          strategy: string
+          symbol: string
+          target_price: number
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date?: string
+          entry_price: number
+          expected_return?: number | null
+          id?: string
+          risk_amount?: number | null
+          sharpe_ratio: number
+          stop_loss: number
+          strategy: string
+          symbol: string
+          target_price: number
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          entry_price?: number
+          expected_return?: number | null
+          id?: string
+          risk_amount?: number | null
+          sharpe_ratio?: number
+          stop_loss?: number
+          strategy?: string
+          symbol?: string
+          target_price?: number
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      option_history: {
+        Row: {
+          close: number | null
+          date: string
+          expiry: string
+          iv: number | null
+          oi: number | null
+          strike: number
+          symbol: string
+          type: string
+        }
+        Insert: {
+          close?: number | null
+          date?: string
+          expiry: string
+          iv?: number | null
+          oi?: number | null
+          strike: number
+          symbol: string
+          type: string
+        }
+        Update: {
+          close?: number | null
+          date?: string
+          expiry?: string
+          iv?: number | null
+          oi?: number | null
+          strike?: number
+          symbol?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "option_history_symbol_fkey"
+            columns: ["symbol"]
+            isOneToOne: false
+            referencedRelation: "symbols"
+            referencedColumns: ["symbol"]
+          },
+        ]
+      }
+      price_history: {
+        Row: {
+          close: number
+          date: string
+          high: number
+          low: number
+          open: number
+          symbol: string
+          volume: number
+        }
+        Insert: {
+          close: number
+          date: string
+          high: number
+          low: number
+          open: number
+          symbol: string
+          volume: number
+        }
+        Update: {
+          close?: number
+          date?: string
+          high?: number
+          low?: number
+          open?: number
+          symbol?: string
+          volume?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_history_symbol_fkey"
+            columns: ["symbol"]
+            isOneToOne: false
+            referencedRelation: "symbols"
+            referencedColumns: ["symbol"]
+          },
+        ]
+      }
+      symbols: {
+        Row: {
+          symbol: string
+        }
+        Insert: {
+          symbol: string
+        }
+        Update: {
+          symbol?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
