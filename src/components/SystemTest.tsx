@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, AlertCircle, Play, Database, Brain, TrendingUp } from "lucide-react";
+import { CheckCircle, XCircle, AlertCircle, Play, Database, Brain, TrendingUp, RefreshCw } from "lucide-react";
 
 interface TestResult {
   name: string;
@@ -143,7 +143,10 @@ export const SystemTest = () => {
       });
     }
 
-    // Test 5: Daily Pick Storage
+    // Wait a moment before checking daily pick storage to allow database write to complete
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Test 5: Daily Pick Storage (check after analysis)
     try {
       const today = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
@@ -159,7 +162,7 @@ export const SystemTest = () => {
         status: data ? 'success' : 'warning',
         message: data ? 
           `Today's pick found: ${data.symbol}` : 
-          'No pick stored for today',
+          'No pick stored for today (may need to run analysis first)',
         details: data ? {
           symbol: data.symbol,
           strategy: data.strategy,
@@ -229,8 +232,17 @@ export const SystemTest = () => {
           disabled={testing}
           className="bg-blue-600 hover:bg-blue-700"
         >
-          <Play className="h-4 w-4 mr-2" />
-          {testing ? 'Running Tests...' : 'Run System Tests'}
+          {testing ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Running Tests...
+            </>
+          ) : (
+            <>
+              <Play className="h-4 w-4 mr-2" />
+              Run System Tests
+            </>
+          )}
         </Button>
 
         {results.length > 0 && (

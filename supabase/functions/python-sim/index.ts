@@ -73,30 +73,57 @@ serve(async (req) => {
 
       console.log(`Selected ${bestCandidate.symbol} with composite score ${bestCandidate.composite_score?.toFixed(4)}`);
 
-      // Store the analysis result
-      const { error: insertError } = await supabaseClient
-        .from('daily_pick')
-        .upsert({
-          date: today,
-          strategy: bestCandidate.strategy,
-          symbol: bestCandidate.symbol,
-          entry_price: bestCandidate.entry_price,
-          stop_loss: bestCandidate.stop_loss,
-          target_price: bestCandidate.target_price,
-          sharpe_ratio: bestCandidate.sharpe_ratio,
-          expected_return: bestCandidate.expected_return,
-          kelly_fraction: bestCandidate.kelly_fraction,
-          size_pct: bestCandidate.size_pct,
-          risk_amount: Math.round((bestCandidate.entry_price - bestCandidate.stop_loss) * 100) / 100,
-          reason_bullets: bestCandidate.reason_bullets
-        }, { onConflict: 'date' });
+      // Store the analysis result with more robust error handling
+      try {
+        const { error: insertError } = await supabaseClient
+          .from('daily_pick')
+          .upsert({
+            date: today,
+            strategy: bestCandidate.strategy,
+            symbol: bestCandidate.symbol,
+            entry_price: bestCandidate.entry_price,
+            stop_loss: bestCandidate.stop_loss,
+            target_price: bestCandidate.target_price,
+            sharpe_ratio: bestCandidate.sharpe_ratio,
+            expected_return: bestCandidate.expected_return,
+            kelly_fraction: bestCandidate.kelly_fraction,
+            size_pct: bestCandidate.size_pct,
+            risk_amount: Math.round((bestCandidate.entry_price - bestCandidate.stop_loss) * 100) / 100,
+            reason_bullets: bestCandidate.reason_bullets
+          }, { onConflict: 'date' });
 
-      if (insertError) {
-        console.error('Error storing daily pick:', insertError);
-        throw insertError;
+        if (insertError) {
+          console.error('Error storing daily pick:', insertError);
+          throw insertError;
+        }
+
+        console.log('✓ Successfully stored daily pick in database');
+        
+        // Verify the pick was stored
+        const { data: verifyData, error: verifyError } = await supabaseClient
+          .from('daily_pick')
+          .select('*')
+          .eq('date', today)
+          .single();
+        
+        if (verifyError) {
+          console.error('Error verifying daily pick storage:', verifyError);
+        } else {
+          console.log('✓ Verified daily pick stored:', verifyData?.symbol);
+        }
+        
+      } catch (storageError) {
+        console.error('Failed to store daily pick:', storageError);
+        return new Response(JSON.stringify({
+          success: false,
+          message: 'Analysis completed but failed to store daily pick',
+          error: storageError.message,
+          selected_pick: bestCandidate
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
-
-      console.log('✓ Successfully stored daily pick in database');
 
       return new Response(JSON.stringify({
         success: true,
