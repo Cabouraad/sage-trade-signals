@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { User } from '@supabase/supabase-js';
@@ -10,6 +9,7 @@ import { toast } from "@/hooks/use-toast";
 import { TodaysPick } from "@/components/TodaysPick";
 import { EquityCurve } from "@/components/EquityCurve";
 import { TradeHistory } from "@/components/TradeHistory";
+import { SystemTest } from "@/components/SystemTest";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -150,6 +150,9 @@ const Dashboard = () => {
               </Card>
             )}
           </div>
+          
+          {/* System Test Component */}
+          <SystemTest />
           
           {/* Today's Pick with Enhanced Features */}
           <TodaysPick />
