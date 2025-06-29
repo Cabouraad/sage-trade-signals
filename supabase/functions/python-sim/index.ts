@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -22,7 +21,6 @@ serve(async (req) => {
 
   try {
     if (pathname === '/backtest') {
-      // Real backtest functionality would need historical analysis
       return new Response(JSON.stringify({ error: 'Backtest requires historical data analysis' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -33,14 +31,14 @@ serve(async (req) => {
       console.log('Starting real data ranking analysis');
       
       const today = new Date().toISOString().split('T')[0];
-      const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'AMZN', 'META'];
+      const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
       
       // Get real price data for analysis
       const candidates = [];
       
       for (const symbol of symbols) {
         try {
-          // Fetch actual price history
+          // Fetch actual price history with more lenient requirements
           const { data: priceData, error: priceError } = await supabaseClient
             .from('price_history')
             .select('*')
@@ -48,64 +46,79 @@ serve(async (req) => {
             .order('date', { ascending: false })
             .limit(60); // Last 60 days
 
-          if (priceError || !priceData || priceData.length < 20) {
-            console.log(`Insufficient price data for ${symbol}, skipping`);
+          if (priceError) {
+            console.error(`Error fetching data for ${symbol}:`, priceError);
             continue;
           }
 
-          console.log(`Analyzing ${symbol} with ${priceData.length} days of data`);
+          if (!priceData || priceData.length < 10) { // Reduced from 20 to 10
+            console.log(`Insufficient price data for ${symbol} (${priceData?.length || 0} days), skipping`);
+            continue;
+          }
+
+          console.log(`Analyzing ${symbol} with ${priceData.length} days of real market data`);
 
           // Calculate real technical indicators
           const prices = priceData.map(p => p.close).reverse(); // Oldest first
           const volumes = priceData.map(p => p.volume).reverse();
           
-          // Simple Moving Averages
-          const sma10 = calculateSMA(prices, 10);
-          const sma20 = calculateSMA(prices, 20);
-          const sma50 = calculateSMA(prices, 50);
+          // Simple Moving Averages (adjust for shorter data)
+          const sma5 = calculateSMA(prices, Math.min(5, prices.length));
+          const sma10 = calculateSMA(prices, Math.min(10, prices.length));
+          const sma20 = calculateSMA(prices, Math.min(20, prices.length));
           
           const currentPrice = prices[prices.length - 1];
-          const prevPrice = prices[prices.length - 2];
           
-          // Technical Analysis Scoring
+          // Technical Analysis Scoring with more lenient criteria
           let technicalScore = 0;
           let signals = [];
           
           // Trend Analysis
-          if (sma10 > sma20 && sma20 > sma50) {
+          if (sma5 > sma10 && sma10 > sma20) {
             technicalScore += 3;
-            signals.push('Strong uptrend: 10 > 20 > 50 SMA');
-          } else if (sma10 > sma20) {
+            signals.push('Strong uptrend: 5 > 10 > 20 SMA');
+          } else if (sma5 > sma10) {
+            technicalScore += 2;
+            signals.push('Short-term uptrend: 5 > 10 SMA');
+          } else if (sma5 > sma20) {
             technicalScore += 1;
-            signals.push('Short-term uptrend: 10 > 20 SMA');
+            signals.push('Price above 20-day average');
           }
           
-          // Momentum
-          const momentum5 = (currentPrice - prices[prices.length - 6]) / prices[prices.length - 6];
-          if (momentum5 > 0.02) {
+          // Momentum (use shorter period if needed)
+          const momentumPeriod = Math.min(5, prices.length - 1);
+          const momentum = (currentPrice - prices[prices.length - 1 - momentumPeriod]) / prices[prices.length - 1 - momentumPeriod];
+          if (momentum > 0.01) { // Reduced from 0.02
             technicalScore += 2;
-            signals.push(`Strong 5-day momentum: ${(momentum5 * 100).toFixed(1)}%`);
+            signals.push(`Positive ${momentumPeriod}-day momentum: ${(momentum * 100).toFixed(1)}%`);
           }
           
           // Volume Analysis
-          const avgVolume = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
-          const recentVolume = volumes[volumes.length - 1];
-          if (recentVolume > avgVolume * 1.5) {
-            technicalScore += 1;
-            signals.push('Above-average volume');
+          if (volumes.length >= 5) {
+            const avgVolume = volumes.slice(-5).reduce((a, b) => a + b, 0) / 5;
+            const recentVolume = volumes[volumes.length - 1];
+            if (recentVolume > avgVolume * 1.2) { // Reduced from 1.5
+              technicalScore += 1;
+              signals.push('Above-average volume');
+            }
           }
           
-          // Price action near highs
-          const high52w = Math.max(...prices.slice(-252)); // 52-week high approximation
-          if (currentPrice / high52w > 0.95) {
+          // Price action near recent highs
+          const recentHigh = Math.max(...prices.slice(-Math.min(20, prices.length)));
+          if (currentPrice / recentHigh > 0.9) { // Reduced from 0.95
             technicalScore += 1;
-            signals.push('Near 52-week highs');
+            signals.push('Near recent highs');
           }
           
-          // Calculate real risk metrics
+          // Calculate risk metrics with available data
           const returns = [];
-          for (let i = 1; i < prices.length; i++) {
+          for (let i = 1; i < Math.min(prices.length, 30); i++) { // Use last 30 days max
             returns.push((prices[i] - prices[i-1]) / prices[i-1]);
+          }
+          
+          if (returns.length === 0) {
+            console.log(`No returns data for ${symbol}, skipping`);
+            continue;
           }
           
           const positiveReturns = returns.filter(r => r > 0);
@@ -119,8 +132,8 @@ serve(async (req) => {
           
           const payoffRatio = avgWin / avgLoss;
           
-          // Kelly Criterion calculation
-          const kellyFraction = Math.max(0, Math.min(0.25, (payoffRatio * winRate - (1 - winRate)) / payoffRatio));
+          // Kelly Criterion calculation (more conservative)
+          const kellyFraction = Math.max(0, Math.min(0.15, (payoffRatio * winRate - (1 - winRate)) / payoffRatio));
           
           // Historical volatility
           const volatility = Math.sqrt(returns.reduce((sum, r) => sum + r*r, 0) / returns.length) * Math.sqrt(252);
@@ -129,22 +142,22 @@ serve(async (req) => {
           const excessReturn = avgWin * winRate - avgLoss * (1 - winRate);
           const sharpeRatio = volatility > 0 ? excessReturn / volatility : 0;
           
-          // Only consider candidates with positive technical score
-          if (technicalScore >= 2 && kellyFraction > 0.01) {
+          // More lenient candidate selection criteria
+          if (technicalScore >= 1 && kellyFraction > 0.005) { // Reduced thresholds
             // Calculate position sizing
-            const sizePct = Math.round(kellyFraction * 100 * 10) / 10;
+            const sizePct = Math.round(kellyFraction * 100 * 20) / 20; // Allow smaller positions
             
-            // ATR-based stops (simplified)
-            const atr = calculateATR(priceData.slice(-14));
+            // ATR-based stops (simplified with available data)
+            const atr = calculateATR(priceData.slice(-Math.min(14, priceData.length)));
             const stopLoss = currentPrice - (atr * 2);
-            const targetPrice = currentPrice + (atr * 3);
+            const targetPrice = currentPrice + (atr * 2.5);
             
             candidates.push({
               symbol,
-              strategy: determineStrategy(sma10, sma20, sma50, momentum5),
+              strategy: determineStrategy(sma5, sma10, sma20, momentum),
               entry_price: currentPrice,
-              stop_loss: Math.max(stopLoss, currentPrice * 0.95), // Max 5% stop
-              target_price: Math.min(targetPrice, currentPrice * 1.15), // Max 15% target
+              stop_loss: Math.max(stopLoss, currentPrice * 0.97), // Max 3% stop
+              target_price: Math.min(targetPrice, currentPrice * 1.12), // Max 12% target
               sharpe_ratio: Math.round(sharpeRatio * 100) / 100,
               expected_return: Math.round(excessReturn * 1000) / 1000,
               kelly_fraction: Math.round(kellyFraction * 1000) / 1000,
@@ -156,6 +169,10 @@ serve(async (req) => {
               reason_bullets: signals.slice(0, 5),
               data_points: priceData.length
             });
+
+            console.log(`✓ Added candidate ${symbol} with technical score ${technicalScore}`);
+          } else {
+            console.log(`${symbol} filtered out: tech score ${technicalScore}, kelly ${kellyFraction}`);
           }
           
         } catch (error) {
@@ -168,21 +185,22 @@ serve(async (req) => {
           success: false,
           message: 'No suitable candidates found with current market data',
           analyzed_symbols: symbols.length,
-          data_available: 'Requires recent price data in database'
+          data_available: 'Requires recent price data in database',
+          debug_info: 'Try running data collection first'
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // Rank by composite score (technical score * kelly fraction * sharpe ratio)
+      // Rank by composite score (technical score * kelly fraction * (1 + sharpe ratio))
       candidates.forEach(c => {
-        c.composite_score = c.technical_score * c.kelly_fraction * Math.max(0, c.sharpe_ratio);
+        c.composite_score = c.technical_score * c.kelly_fraction * (1 + Math.max(0, c.sharpe_ratio));
       });
       
       candidates.sort((a, b) => b.composite_score - a.composite_score);
       const bestCandidate = candidates[0];
 
-      console.log(`Selected ${bestCandidate.symbol} with score ${bestCandidate.composite_score}`);
+      console.log(`Selected ${bestCandidate.symbol} with composite score ${bestCandidate.composite_score.toFixed(4)}`);
 
       // Store the real analysis result
       const { error: insertError } = await supabaseClient
@@ -207,12 +225,14 @@ serve(async (req) => {
         throw insertError;
       }
 
+      console.log('✓ Successfully stored daily pick in database');
+
       return new Response(JSON.stringify({
         success: true,
-        message: 'Real data analysis completed',
+        message: 'Real data analysis completed successfully',
         selected_pick: bestCandidate,
         total_candidates: candidates.length,
-        analysis_method: 'technical_analysis_with_real_data'
+        analysis_method: 'technical_analysis_with_real_market_data'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -221,8 +241,8 @@ serve(async (req) => {
     return new Response('Not found', { status: 404, headers: corsHeaders });
 
   } catch (error) {
-    console.error('Error in python-sim:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error('Error in python-sim analysis:', error);
+    return new Response(JSON.stringify({ error: error.message, success: false }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -231,16 +251,18 @@ serve(async (req) => {
 
 // Real technical analysis functions
 function calculateSMA(prices: number[], period: number): number {
-  if (prices.length < period) return prices[prices.length - 1] || 0;
+  if (prices.length < period || period <= 0) return prices[prices.length - 1] || 0;
   const slice = prices.slice(-period);
   return slice.reduce((sum, price) => sum + price, 0) / period;
 }
 
 function calculateATR(priceData: any[], period: number = 14): number {
-  if (priceData.length < period + 1) return priceData[0]?.high - priceData[0]?.low || 1;
+  if (!priceData || priceData.length < 2) return 1;
   
+  const actualPeriod = Math.min(period, priceData.length - 1);
   const trueRanges = [];
-  for (let i = 1; i < priceData.length && i <= period; i++) {
+  
+  for (let i = 1; i < Math.min(priceData.length, actualPeriod + 1); i++) {
     const current = priceData[i];
     const previous = priceData[i - 1];
     
@@ -251,15 +273,15 @@ function calculateATR(priceData: any[], period: number = 14): number {
     trueRanges.push(Math.max(tr1, tr2, tr3));
   }
   
-  return trueRanges.reduce((sum, tr) => sum + tr, 0) / trueRanges.length;
+  return trueRanges.length > 0 ? trueRanges.reduce((sum, tr) => sum + tr, 0) / trueRanges.length : 1;
 }
 
-function determineStrategy(sma10: number, sma20: number, sma50: number, momentum: number): string {
-  if (sma10 > sma20 && sma20 > sma50 && momentum > 0.03) {
+function determineStrategy(sma5: number, sma10: number, sma20: number, momentum: number): string {
+  if (sma5 > sma10 && sma10 > sma20 && momentum > 0.02) {
     return 'momentum-breakout';
-  } else if (sma10 > sma20) {
+  } else if (sma5 > sma10) {
     return 'trend-following';
-  } else if (momentum < -0.02) {
+  } else if (momentum < -0.015) {
     return 'mean-reversion';
   } else {
     return 'consolidation-play';

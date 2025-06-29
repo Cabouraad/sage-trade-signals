@@ -33,12 +33,12 @@ serve(async (req) => {
       finnhub: !!finnhubKey 
     });
 
-    // Symbols to track with real data
-    const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'AMZN', 'META', 'NFLX', 'AMD', 'ADBE'];
+    // Priority symbols to track with real data (reduced list for reliability)
+    const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
     let successfulUpdates = 0;
     let failedUpdates = 0;
     
-    // 1. Fetch and store REAL price data
+    // 1. Fetch and store REAL price data with better error handling
     for (const symbol of symbols) {
       try {
         console.log(`Fetching real data for ${symbol}...`);
@@ -48,35 +48,45 @@ serve(async (req) => {
           .from('symbols')
           .upsert({ symbol }, { onConflict: 'symbol' });
 
-        // Fetch REAL daily data from Alpha Vantage
+        // Fetch REAL daily data from Alpha Vantage with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
         const response = await fetch(
-          `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${avKey}&outputsize=compact`
+          `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${avKey}&outputsize=compact`,
+          { signal: controller.signal }
         );
         
+        clearTimeout(timeoutId);
+        
         if (!response.ok) {
-          throw new Error(`Alpha Vantage API error: ${response.status}`);
+          throw new Error(`Alpha Vantage API error: ${response.status} ${response.statusText}`);
         }
         
         const data = await response.json();
         
         if (data['Error Message']) {
-          throw new Error(`Alpha Vantage error: ${data['Error Message']}`);
-        }
-        
-        if (data['Note']) {
-          console.warn(`Alpha Vantage rate limit notice for ${symbol}: ${data['Note']}`);
-          await new Promise(resolve => setTimeout(resolve, 12000)); // Wait 12 seconds
+          console.error(`Alpha Vantage error for ${symbol}: ${data['Error Message']}`);
+          failedUpdates++;
           continue;
         }
         
-        if (!data['Time Series (Daily)']) {
+        if (data['Note']) {
+          console.warn(`Alpha Vantage rate limit for ${symbol}: ${data['Note']}`);
+          // Wait longer for rate limits
+          await new Promise(resolve => setTimeout(resolve, 20000));
+          failedUpdates++;
+          continue;
+        }
+        
+        if (!data['Time Series (Daily)'] || Object.keys(data['Time Series (Daily)']).length === 0) {
           console.warn(`No time series data returned for ${symbol}`);
           failedUpdates++;
           continue;
         }
 
         const timeSeries = data['Time Series (Daily)'];
-        const dates = Object.keys(timeSeries).sort().slice(-5); // Last 5 days
+        const dates = Object.keys(timeSeries).sort().slice(-30); // Last 30 days for better analysis
         
         let updatedDays = 0;
         for (const dateKey of dates) {
@@ -108,87 +118,93 @@ serve(async (req) => {
         if (updatedDays > 0) {
           console.log(`✓ Updated ${updatedDays} days of real data for ${symbol}`);
           successfulUpdates++;
+
+          // Fetch real news sentiment if Finnhub is available
+          if (finnhubKey) {
+            try {
+              const today = new Date().toISOString().split('T')[0];
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 7);
+              const weekAgoStr = yesterday.toISOString().split('T')[0];
+
+              const newsResponse = await fetch(
+                `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${weekAgoStr}&to=${today}&token=${finnhubKey}`,
+                { signal: AbortSignal.timeout(15000) }
+              );
+
+              if (newsResponse.ok) {
+                const newsData = await newsResponse.json();
+                
+                if (Array.isArray(newsData) && newsData.length > 0) {
+                  // Process and store real news with sentiment
+                  for (const article of newsData.slice(0, 5)) {
+                    const sentimentScore = analyzeSentiment(article.headline + ' ' + (article.summary || ''));
+                    
+                    await supabaseClient
+                      .from('news_sentiment')
+                      .upsert({
+                        symbol,
+                        headline: article.headline,
+                        summary: article.summary || '',
+                        url: article.url,
+                        sentiment_score: sentimentScore,
+                        published_at: new Date(article.datetime * 1000).toISOString(),
+                        source: article.source,
+                        category: article.category || 'general',
+                        date: today
+                      }, { onConflict: 'symbol,headline,date' });
+                  }
+                  
+                  console.log(`✓ Updated real news sentiment for ${symbol}`);
+                }
+              }
+            } catch (newsError) {
+              console.error(`Error fetching real news for ${symbol}:`, newsError);
+            }
+          }
         } else {
           failedUpdates++;
         }
 
-        // Fetch real news sentiment if Finnhub is available
-        if (finnhubKey) {
-          try {
-            const today = new Date().toISOString().split('T')[0];
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-            const newsResponse = await fetch(
-              `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${yesterdayStr}&to=${today}&token=${finnhubKey}`
-            );
-
-            if (newsResponse.ok) {
-              const newsData = await newsResponse.json();
-              
-              if (Array.isArray(newsData) && newsData.length > 0) {
-                // Process and store real news with sentiment
-                for (const article of newsData.slice(0, 3)) { // Limit to 3 articles per symbol
-                  const sentimentScore = analyzeSentiment(article.headline + ' ' + (article.summary || ''));
-                  
-                  await supabaseClient
-                    .from('news_sentiment')
-                    .upsert({
-                      symbol,
-                      headline: article.headline,
-                      summary: article.summary,
-                      url: article.url,
-                      sentiment_score: sentimentScore,
-                      published_at: new Date(article.datetime * 1000).toISOString(),
-                      source: article.source,
-                      category: article.category,
-                      date: today
-                    }, { onConflict: 'symbol,headline,date' });
-                }
-                
-                console.log(`✓ Updated real news sentiment for ${symbol}`);
-              }
-            }
-          } catch (newsError) {
-            console.error(`Error fetching real news for ${symbol}:`, newsError);
-          }
-        }
-
-        // Rate limiting - respect Alpha Vantage limits (5 calls per minute for free tier)
-        await new Promise(resolve => setTimeout(resolve, 12000)); // 12 second delay
+        // Rate limiting - be more conservative with API calls
+        await new Promise(resolve => setTimeout(resolve, 15000)); // 15 second delay between calls
         
       } catch (error) {
         console.error(`Failed to process real data for ${symbol}:`, error);
         failedUpdates++;
         
-        // If we hit rate limits, increase delay
-        if (error.message.includes('rate limit') || error.message.includes('Note')) {
-          await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
-        }
+        // If we hit rate limits or network issues, wait longer
+        await new Promise(resolve => setTimeout(resolve, 30000));
       }
     }
 
-    // 2. Only run analysis if we have recent real data
+    // 2. Run analysis only if we have sufficient fresh real data
     let analysisResult = null;
-    if (successfulUpdates > 0) {
+    if (successfulUpdates >= 3) { // Need at least 3 symbols with fresh data
       try {
-        console.log('Running real data analysis...');
-        const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('python-sim/rank', {
-          body: { symbols: symbols.slice(0, successfulUpdates) } // Only analyze symbols with fresh data
+        console.log('Running real data analysis with sufficient data...');
+        
+        // Call the analysis function directly
+        const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('python-sim', {
+          body: { 
+            symbols: symbols.slice(0, successfulUpdates),
+            path: 'rank'
+          }
         });
 
         if (rankError) {
           console.error('Error in real data analysis:', rankError);
-        } else {
-          console.log('✓ Real data analysis completed:', rankResult);
+        } else if (rankResult?.success) {
+          console.log('✓ Real data analysis completed successfully:', rankResult);
           analysisResult = rankResult;
+        } else {
+          console.warn('Analysis completed but no suitable candidates found:', rankResult);
         }
       } catch (error) {
         console.error('Error calling analysis function:', error);
       }
     } else {
-      console.warn('No fresh data available - skipping analysis');
+      console.warn(`Insufficient fresh data (${successfulUpdates}/${symbols.length}) - skipping analysis`);
     }
 
     const summary = {
@@ -205,6 +221,7 @@ serve(async (req) => {
         finnhub: !!finnhubKey
       },
       analysis_completed: !!analysisResult,
+      analysis_result: analysisResult,
       timestamp: new Date().toISOString()
     };
 
