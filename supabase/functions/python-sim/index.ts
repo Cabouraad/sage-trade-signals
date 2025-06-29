@@ -13,31 +13,45 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const url = new URL(req.url);
-  const pathname = url.pathname;
-
   const supabaseClient = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   )
 
   try {
-    if (pathname === '/backtest') {
+    // Parse request body to get the path parameter
+    let requestBody: any = {};
+    try {
+      const bodyText = await req.text();
+      if (bodyText) {
+        requestBody = JSON.parse(bodyText);
+      }
+    } catch (e) {
+      console.log('No request body or invalid JSON, using default path');
+    }
+
+    const path = requestBody.path || 'rank';
+    console.log(`Processing request with path: ${path}`);
+
+    if (path === 'backtest') {
       return new Response(JSON.stringify({ error: 'Backtest requires historical data analysis' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    if (pathname === '/rank' || pathname.includes('rank')) {
+    if (path === 'rank') {
       console.log('Starting real data ranking analysis');
       
       const today = new Date().toISOString().split('T')[0];
-      const symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
+      const symbols = requestBody.symbols || ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
+      
+      console.log(`Analyzing symbols: ${symbols.join(', ')}`);
       
       const candidates = await buildCandidates(symbols, supabaseClient);
 
       if (candidates.length === 0) {
+        console.log('No candidates found, returning warning');
         return new Response(JSON.stringify({
           success: false,
           message: 'No suitable candidates found with current market data',
@@ -95,11 +109,23 @@ serve(async (req) => {
       });
     }
 
-    return new Response('Not found', { status: 404, headers: corsHeaders });
+    // Default response for unknown paths
+    return new Response(JSON.stringify({
+      error: 'Unknown path',
+      available_paths: ['rank', 'backtest'],
+      received_path: path
+    }), { 
+      status: 400, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
 
   } catch (error) {
     console.error('Error in python-sim analysis:', error);
-    return new Response(JSON.stringify({ error: error.message, success: false }), {
+    return new Response(JSON.stringify({ 
+      error: error.message, 
+      success: false,
+      stack: error.stack 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

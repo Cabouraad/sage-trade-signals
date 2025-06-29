@@ -40,21 +40,21 @@ export async function runAnalysis(supabaseClient: any, symbols: string[], succes
     });
 
     if (rankError) {
-      console.error('Error in analysis:', rankError);
-      return { success: false, message: 'Error in analysis', result: rankError };
+      console.error('Error in analysis function call:', rankError);
+      return { success: false, message: 'Error calling analysis function', result: rankError };
     }
     
-    console.log('Analysis result:', rankResult);
+    console.log('Analysis function response:', rankResult);
     
     if (rankResult?.success) {
-      console.log('✓ Analysis completed successfully:', rankResult);
+      console.log('✓ Analysis completed successfully');
       return { success: true, message: 'Analysis completed successfully', result: rankResult };
     } else {
-      console.warn('Analysis completed but no suitable candidates found:', rankResult);
-      return { success: false, message: 'Analysis completed but no suitable candidates found', result: rankResult };
+      console.warn('Analysis completed but returned success=false:', rankResult);
+      return { success: false, message: rankResult?.message || 'Analysis completed but no suitable candidates found', result: rankResult };
     }
   } catch (error) {
-    console.error('Error calling analysis function:', error);
-    return { success: false, message: 'Error calling analysis function', result: error };
+    console.error('Exception in analysis function call:', error);
+    return { success: false, message: 'Exception in analysis function call', result: { error: error.message, stack: error.stack } };
   }
 }
