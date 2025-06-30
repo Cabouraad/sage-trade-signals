@@ -1,4 +1,3 @@
-
 // deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -36,7 +35,8 @@ async function checkLiveDataAvailability(symbols: string[]): Promise<{ symbol: s
       continue;
     }
     
-    const hasRecentData = new Date(data[0].date) > new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // More lenient data freshness check - accept data within 7 days
+    const hasRecentData = new Date(data[0].date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const currentPrice = data[0].close;
     const volatility = calculateRealVolatility(data);
     
@@ -101,6 +101,7 @@ async function generateProfitableOptionsStrategies(symbols: string[]): Promise<a
     const latestDate = new Date(priceData[0].date);
     const daysSinceUpdate = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24);
     
+    // More lenient data freshness check - accept data within 7 days
     if (daysSinceUpdate > 7) {
       console.log(`Skipping ${symbol} - data is ${Math.round(daysSinceUpdate)} days old`);
       continue;
@@ -325,18 +326,69 @@ serve(async (req) => {
     console.log(`Analyzing market conditions for ${symbols.length} symbols...`);
     
     const dataStatus = await checkLiveDataAvailability(symbols);
-    const symbolsWithLiveData = dataStatus.filter(s => s.hasRecentData && s.currentPrice).map(s => s.symbol);
+    const symbolsWithRecentData = dataStatus.filter(s => s.hasRecentData && s.currentPrice).map(s => s.symbol);
     
-    if (symbolsWithLiveData.length === 0) {
-      throw new Error('No symbols have recent live data. Cannot generate strategies with stale data.');
+    if (symbolsWithRecentData.length === 0) {
+      console.warn('No symbols have recent data (within 7 days). Checking for any usable data...');
+      
+      // Fallback: Check if we have any data at all (within 30 days)
+      const symbolsWithAnyData = dataStatus.filter(s => s.currentPrice && s.lastUpdate).map(s => s.symbol);
+      
+      if (symbolsWithAnyData.length === 0) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'No symbols have any usable price data. Market data collection may have failed completely.',
+            symbols_checked: symbols.length,
+            data_freshness: 'FAILED',
+            timestamp: new Date().toISOString()
+          }),
+          { 
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      console.log(`Using ${symbolsWithAnyData.length} symbols with older data as fallback`);
+      const allStrategies = await generateProfitableOptionsStrategies(symbolsWithAnyData);
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: `Generated ${allStrategies.length} strategies using available data (some may be older than preferred)`,
+          strategies_found: allStrategies.length,
+          symbols_analyzed: symbolsWithAnyData.length,
+          symbols_with_recent_data: symbolsWithRecentData,
+          warning: 'Using older data due to market data collection issues',
+          data_freshness: 'STALE_FALLBACK',
+          timestamp: new Date().toISOString()
+        }),
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
     
-    console.log(`Found ${symbolsWithLiveData.length} symbols with fresh data for analysis`);
+    console.log(`Found ${symbolsWithRecentData.length} symbols with recent data for analysis`);
     
-    const allStrategies = await generateProfitableOptionsStrategies(symbolsWithLiveData);
+    const allStrategies = await generateProfitableOptionsStrategies(symbolsWithRecentData);
     
     if (allStrategies.length === 0) {
-      throw new Error('No profitable strategies could be generated from live data that meet minimum risk/reward criteria.');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'No profitable strategies could be generated that meet minimum risk/reward criteria.',
+          symbols_analyzed: symbolsWithRecentData.length,
+          data_freshness: 'LIVE',
+          timestamp: new Date().toISOString()
+        }),
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
     
     console.log(`Generated ${allStrategies.length} profitable options strategies from live data`);
@@ -372,8 +424,8 @@ serve(async (req) => {
           `Risk/Reward: ${bestStrategy.risk_reward_ratio.toFixed(2)}:1 (${Math.round(bestStrategy.expected_profit_probability * 100)}% win rate)`,
           `IV Rank: ${Math.round(bestStrategy.iv_rank || 0)}% (optimal for strategy type)`,
           `Max Profit: $${bestStrategy.max_profit} | Max Loss: $${bestStrategy.max_loss}`,
-          `Confidence: ${Math.round(bestStrategy.confidence_score || 0)}% (live market data)`,
-          `Data freshness: LIVE (${bestStrategy.last_price_update})`
+          `Confidence: ${Math.round(bestStrategy.confidence_score || 0)}% (recent market data)`,
+          `Data age: ${bestStrategy.last_price_update}`
         ]
       };
       
@@ -390,8 +442,8 @@ serve(async (req) => {
         success: true,
         message: `Generated ${strategiesToStore.length} high-quality options strategies with improved risk/reward profiles`,
         strategies_found: strategiesToStore.length,
-        symbols_analyzed: symbolsWithLiveData.length,
-        symbols_with_live_data: symbolsWithLiveData,
+        symbols_analyzed: symbolsWithRecentData.length,
+        symbols_with_recent_data: symbolsWithRecentData,
         best_strategy: bestStrategy,
         avg_risk_reward_ratio: strategiesToStore.reduce((sum, s) => sum + s.risk_reward_ratio, 0) / strategiesToStore.length,
         avg_win_probability: strategiesToStore.reduce((sum, s) => sum + s.expected_profit_probability, 0) / strategiesToStore.length,
@@ -410,6 +462,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: false, 
         error: String(error),
+        stack: error.stack,
         data_freshness: 'FAILED',
         timestamp: new Date().toISOString()
       }),

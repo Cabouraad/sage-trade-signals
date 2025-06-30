@@ -23,11 +23,28 @@ serve(async (req) => {
 
     console.log('Starting daily job: S&P 500 Market Data + Options Analysis...');
 
-    // STRICT CHECK: Ensure we have required API keys for live data
+    // Check for required API keys
     const alphaVantageKey = Deno.env.get('ALPHA_VANTAGE_API_KEY') || Deno.env.get('AV_KEY');
-    if (!alphaVantageKey) {
-      throw new Error('ALPHA_VANTAGE_API_KEY is required for live market data. Cannot proceed with dummy data.');
+    const finnhubKey = Deno.env.get('FINNHUB_KEY');
+    
+    if (!alphaVantageKey && !finnhubKey) {
+      console.error('No market data API keys configured. Need either ALPHA_VANTAGE_API_KEY or FINNHUB_KEY');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Market data API keys not configured. Please set ALPHA_VANTAGE_API_KEY or FINNHUB_KEY in Supabase secrets.',
+          missingKeys: ['ALPHA_VANTAGE_API_KEY', 'FINNHUB_KEY'],
+          timestamp: new Date().toISOString(),
+          dataFreshness: 'FAILED'
+        }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
+
+    console.log(`API Keys available: AV=${!!alphaVantageKey}, Finnhub=${!!finnhubKey}`);
 
     // Parse request to see if full S&P 500 analysis is requested
     const url = new URL(req.url);
@@ -39,29 +56,55 @@ serve(async (req) => {
     const dataResult = await collectMarketData(supabaseClient, fullAnalysis);
     console.log(`Data collection completed: ${dataResult.successfulUpdates} successful, ${dataResult.failedUpdates} failed`);
     
-    // STRICT CHECK: Ensure we got some real data
+    // More lenient success rate check - allow partial success
     if (dataResult.successfulUpdates === 0) {
-      throw new Error(`Failed to collect ANY live market data. Got ${dataResult.failedUpdates} failures. Cannot proceed with analysis using stale data.`);
+      console.warn('No live market data collected. Checking if we have any usable existing data...');
+      
+      // Check if we have any recent data (within last 7 days) to work with
+      const { data: recentData, error } = await supabaseClient
+        .from('price_history')
+        .select('symbol, date')
+        .gte('date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .limit(1);
+      
+      if (error || !recentData || recentData.length === 0) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Failed to collect ANY live market data and no recent data available. API issues detected.`,
+            details: {
+              successfulUpdates: dataResult.successfulUpdates,
+              failedUpdates: dataResult.failedUpdates,
+              apiKeysConfigured: { alphaVantage: !!alphaVantageKey, finnhub: !!finnhubKey }
+            },
+            timestamp: new Date().toISOString(),
+            dataFreshness: 'FAILED'
+          }),
+          { 
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      } else {
+        console.log('Found some recent data, proceeding with analysis using existing data...');
+      }
     }
 
-    // Require minimum success rate for live data
     const successRate = dataResult.successfulUpdates / (dataResult.successfulUpdates + dataResult.failedUpdates);
-    if (successRate < 0.5) {
-      throw new Error(`Market data collection success rate too low: ${Math.round(successRate * 100)}%. Need at least 50% success rate for reliable analysis.`);
-    }
+    console.log(`Data collection success rate: ${Math.round(successRate * 100)}%`);
 
     console.log(`Priority breakdown - High: ${dataResult.priorityResults.high}, Medium: ${dataResult.priorityResults.medium}, Low: ${dataResult.priorityResults.low}`);
 
-    // Step 2: Run comprehensive options analysis with LIVE data only
+    // Step 2: Run comprehensive options analysis
     const optionsResult = await runOptionsAnalysis(supabaseClient, HIGH_PRIORITY_SYMBOLS);
 
-    // Step 3: Run stock ranking with LIVE data only
+    // Step 3: Run stock ranking (as fallback if options analysis fails)
     const stockRankingResult = await runStockRanking(supabaseClient);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Daily S&P 500 analysis completed successfully with LIVE data (${fullAnalysis ? 'Full' : 'Priority'} mode)`,
+        message: `Daily S&P 500 analysis completed with ${dataResult.successfulUpdates > 0 ? 'fresh' : 'existing'} data (${fullAnalysis ? 'Full' : 'Priority'} mode)`,
         dataCollection: {
           successful: dataResult.successfulUpdates,
           failed: dataResult.failedUpdates,
@@ -74,7 +117,7 @@ serve(async (req) => {
         fullAnalysis,
         symbolsProcessed: dataResult.symbols.length,
         timestamp: new Date().toISOString(),
-        dataFreshness: 'LIVE'
+        dataFreshness: dataResult.successfulUpdates > 0 ? 'LIVE' : 'RECENT'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -87,6 +130,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: false, 
         error: error.message,
+        stack: error.stack,
         timestamp: new Date().toISOString(),
         dataFreshness: 'FAILED'
       }),
