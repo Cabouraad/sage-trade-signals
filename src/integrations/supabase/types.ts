@@ -96,6 +96,51 @@ export type Database = {
         }
         Relationships: []
       }
+      market_volatility: {
+        Row: {
+          dividend_date: string | null
+          earnings_announcement: string | null
+          historical_volatility_30d: number | null
+          id: string
+          implied_volatility_30d: number | null
+          iv_percentile: number | null
+          iv_rank: number | null
+          skew: number | null
+          symbol: string
+          term_structure: Json | null
+          updated_at: string | null
+          vix_correlation: number | null
+        }
+        Insert: {
+          dividend_date?: string | null
+          earnings_announcement?: string | null
+          historical_volatility_30d?: number | null
+          id?: string
+          implied_volatility_30d?: number | null
+          iv_percentile?: number | null
+          iv_rank?: number | null
+          skew?: number | null
+          symbol: string
+          term_structure?: Json | null
+          updated_at?: string | null
+          vix_correlation?: number | null
+        }
+        Update: {
+          dividend_date?: string | null
+          earnings_announcement?: string | null
+          historical_volatility_30d?: number | null
+          id?: string
+          implied_volatility_30d?: number | null
+          iv_percentile?: number | null
+          iv_rank?: number | null
+          skew?: number | null
+          symbol?: string
+          term_structure?: Json | null
+          updated_at?: string | null
+          vix_correlation?: number | null
+        }
+        Relationships: []
+      }
       news_sentiment: {
         Row: {
           category: string | null
@@ -179,6 +224,138 @@ export type Database = {
         }
         Relationships: []
       }
+      options_chain: {
+        Row: {
+          ask: number | null
+          bid: number | null
+          data_timestamp: string | null
+          delta: number | null
+          expiration_date: string
+          gamma: number | null
+          id: string
+          implied_volatility: number | null
+          intrinsic_value: number | null
+          last_trade_price: number | null
+          last_trade_time: string | null
+          open_interest: number | null
+          option_type: string
+          rho: number | null
+          strike_price: number
+          symbol: string
+          theoretical_price: number | null
+          theta: number | null
+          time_value: number | null
+          vega: number | null
+          volume: number | null
+        }
+        Insert: {
+          ask?: number | null
+          bid?: number | null
+          data_timestamp?: string | null
+          delta?: number | null
+          expiration_date: string
+          gamma?: number | null
+          id?: string
+          implied_volatility?: number | null
+          intrinsic_value?: number | null
+          last_trade_price?: number | null
+          last_trade_time?: string | null
+          open_interest?: number | null
+          option_type: string
+          rho?: number | null
+          strike_price: number
+          symbol: string
+          theoretical_price?: number | null
+          theta?: number | null
+          time_value?: number | null
+          vega?: number | null
+          volume?: number | null
+        }
+        Update: {
+          ask?: number | null
+          bid?: number | null
+          data_timestamp?: string | null
+          delta?: number | null
+          expiration_date?: string
+          gamma?: number | null
+          id?: string
+          implied_volatility?: number | null
+          intrinsic_value?: number | null
+          last_trade_price?: number | null
+          last_trade_time?: string | null
+          open_interest?: number | null
+          option_type?: string
+          rho?: number | null
+          strike_price?: number
+          symbol?: string
+          theoretical_price?: number | null
+          theta?: number | null
+          time_value?: number | null
+          vega?: number | null
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      options_strategies: {
+        Row: {
+          breakeven_points: number[] | null
+          confidence_score: number | null
+          created_at: string | null
+          days_to_expiration: number | null
+          delta_exposure: number | null
+          expected_return: number | null
+          id: string
+          iv_rank: number | null
+          legs: Json
+          max_loss: number | null
+          max_profit: number | null
+          profit_probability: number | null
+          risk_reward_ratio: number | null
+          strategy_name: string
+          strategy_type: string
+          symbol: string
+          theta_decay: number | null
+        }
+        Insert: {
+          breakeven_points?: number[] | null
+          confidence_score?: number | null
+          created_at?: string | null
+          days_to_expiration?: number | null
+          delta_exposure?: number | null
+          expected_return?: number | null
+          id?: string
+          iv_rank?: number | null
+          legs: Json
+          max_loss?: number | null
+          max_profit?: number | null
+          profit_probability?: number | null
+          risk_reward_ratio?: number | null
+          strategy_name: string
+          strategy_type: string
+          symbol: string
+          theta_decay?: number | null
+        }
+        Update: {
+          breakeven_points?: number[] | null
+          confidence_score?: number | null
+          created_at?: string | null
+          days_to_expiration?: number | null
+          delta_exposure?: number | null
+          expected_return?: number | null
+          id?: string
+          iv_rank?: number | null
+          legs?: Json
+          max_loss?: number | null
+          max_profit?: number | null
+          profit_probability?: number | null
+          risk_reward_ratio?: number | null
+          strategy_name?: string
+          strategy_type?: string
+          symbol?: string
+          theta_decay?: number | null
+        }
+        Relationships: []
+      }
       pattern_signal: {
         Row: {
           confidence: number
@@ -242,6 +419,87 @@ export type Database = {
         }
         Update: {
           symbol?: string
+        }
+        Relationships: []
+      }
+      tradeable_symbols: {
+        Row: {
+          avg_volume: number | null
+          company_name: string | null
+          exchange: string | null
+          last_updated: string | null
+          market_cap: number | null
+          options_available: boolean | null
+          sector: string | null
+          symbol: string
+        }
+        Insert: {
+          avg_volume?: number | null
+          company_name?: string | null
+          exchange?: string | null
+          last_updated?: string | null
+          market_cap?: number | null
+          options_available?: boolean | null
+          sector?: string | null
+          symbol: string
+        }
+        Update: {
+          avg_volume?: number | null
+          company_name?: string | null
+          exchange?: string | null
+          last_updated?: string | null
+          market_cap?: number | null
+          options_available?: boolean | null
+          sector?: string | null
+          symbol?: string
+        }
+        Relationships: []
+      }
+      unusual_options_activity: {
+        Row: {
+          avg_volume: number | null
+          detected_at: string | null
+          expiration_date: string
+          id: string
+          option_type: string
+          premium_paid: number | null
+          sentiment: string | null
+          strike_price: number
+          symbol: string
+          underlying_price: number | null
+          unusual_score: number | null
+          volume: number
+          volume_ratio: number | null
+        }
+        Insert: {
+          avg_volume?: number | null
+          detected_at?: string | null
+          expiration_date: string
+          id?: string
+          option_type: string
+          premium_paid?: number | null
+          sentiment?: string | null
+          strike_price: number
+          symbol: string
+          underlying_price?: number | null
+          unusual_score?: number | null
+          volume: number
+          volume_ratio?: number | null
+        }
+        Update: {
+          avg_volume?: number | null
+          detected_at?: string | null
+          expiration_date?: string
+          id?: string
+          option_type?: string
+          premium_paid?: number | null
+          sentiment?: string | null
+          strike_price?: number
+          symbol?: string
+          underlying_price?: number | null
+          unusual_score?: number | null
+          volume?: number
+          volume_ratio?: number | null
         }
         Relationships: []
       }

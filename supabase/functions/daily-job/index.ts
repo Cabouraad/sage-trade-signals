@@ -19,36 +19,36 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('Starting daily job: Data collection + TypeScript Ranking...');
+    console.log('Starting daily job: Market data + Options Analysis...');
 
-    // Step 1: Collect fresh market data
-    const symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY'];
-    console.log('Collecting market data for:', symbols.join(', '));
+    // Step 1: Collect fresh market data for key symbols
+    const keySymbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY', 'QQQ', 'IWM'];
+    console.log('Collecting market data for key symbols:', keySymbols.join(', '));
     
-    const dataResult = await collectMarketData(supabaseClient, symbols);
+    const dataResult = await collectMarketData(supabaseClient, keySymbols);
     console.log(`Data collection completed: ${dataResult.successfulUpdates} successful, ${dataResult.failedUpdates} failed`);
 
-    // Step 2: Run TypeScript ranking algorithm
-    console.log('Running TypeScript ranking engine...');
-    const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('rank-runner');
+    // Step 2: Run comprehensive options analysis
+    console.log('Running options scanner...');
+    const { data: optionsResult, error: optionsError } = await supabaseClient.functions.invoke('options-scanner');
 
-    if (rankError) {
-      console.error('Error calling rank-runner:', rankError);
-      throw rankError;
+    if (optionsError) {
+      console.error('Error calling options-scanner:', optionsError);
+      throw optionsError;
     }
 
-    console.log('Rank-runner result:', rankResult);
+    console.log('Options analysis result:', optionsResult);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Daily job completed successfully',
+        message: 'Daily options analysis completed successfully',
         dataCollection: {
           successful: dataResult.successfulUpdates,
           failed: dataResult.failedUpdates,
           symbols: dataResult.symbols
         },
-        ranking: rankResult,
+        optionsAnalysis: optionsResult,
         timestamp: new Date().toISOString()
       }),
       { 
