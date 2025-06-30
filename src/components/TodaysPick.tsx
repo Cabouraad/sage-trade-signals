@@ -58,7 +58,15 @@ export const TodaysPick = () => {
         .limit(1);
       
       if (error) throw error;
-      return data?.[0] as OptionsStrategy | null;
+      
+      if (!data?.[0]) return null;
+      
+      // Type-safe conversion from database result to OptionsStrategy
+      const dbStrategy = data[0];
+      return {
+        ...dbStrategy,
+        legs: dbStrategy.legs as OptionsLeg[] // Safe cast since we control the data structure
+      } as OptionsStrategy;
     },
     refetchInterval: 5 * 60 * 1000,
   });
