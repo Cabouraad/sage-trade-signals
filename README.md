@@ -89,7 +89,7 @@ The system uses a simple but effective approach:
 1. **Signal Generation**: 20/50 SMA crossover detection
 2. **Risk Management**: ATR-based stop losses and targets (2:1 R/R)
 3. **Position Sizing**: Kelly Criterion with 25% maximum allocation
-4. **Universe**: Focus on liquid large-cap stocks (AAPL, MSFT, NVDA, TSLA, AMZN)
+4. **Universe**: Dynamic universe based on symbols with ≥60 days of price history
 
 ## API Integration
 

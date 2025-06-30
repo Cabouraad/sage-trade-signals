@@ -289,7 +289,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      list_symbols_with_history: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          symbol: string
+        }[]
+      }
+      seed_stub_data: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
