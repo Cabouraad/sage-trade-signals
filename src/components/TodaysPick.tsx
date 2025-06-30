@@ -1,11 +1,10 @@
-
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, Target, Shield, BarChart3 } from 'lucide-react';
+import { TrendingUp, Target, Shield, BarChart3, Calendar, DollarSign } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 interface DailyPick {
@@ -20,12 +19,19 @@ interface DailyPick {
   pick_ts: string;
 }
 
+interface OptionsLeg {
+  action: 'buy' | 'sell';
+  type: 'call' | 'put' | 'stock';
+  strike?: number;
+  quantity: number;
+}
+
 interface OptionsStrategy {
   id: string;
   symbol: string;
   strategy_name: string;
   strategy_type: string;
-  legs: any;
+  legs: OptionsLeg[];
   max_profit: number;
   max_loss: number;
   breakeven_points: number[];
@@ -105,6 +111,36 @@ export const TodaysPick = () => {
     }
   };
 
+  const getStrategyExplanation = (strategyName: string) => {
+    switch (strategyName.toLowerCase()) {
+      case 'iron condor':
+        return "A neutral strategy that profits from low volatility. Sell a put spread and call spread simultaneously, collecting premium while the stock stays between the short strikes.";
+      case 'covered call':
+        return "An income strategy where you own 100 shares and sell a call option above current price. Collect premium while capping upside potential.";
+      case 'cash secured put':
+        return "Sell a put option while holding enough cash to buy 100 shares if assigned. Collect premium while potentially acquiring stock at a discount.";
+      case 'bull call spread':
+        return "A bullish strategy using two call options: buy a lower strike call, sell a higher strike call. Limited profit and loss.";
+      case 'bear put spread':
+        return "A bearish strategy using two put options: buy a higher strike put, sell a lower strike put. Limited profit and loss.";
+      default:
+        return "Options strategy designed to profit from specific market conditions and volatility expectations.";
+    }
+  };
+
+  const formatLegInstruction = (leg: OptionsLeg, expirationDate: string) => {
+    if (leg.type === 'stock') {
+      return `${leg.action.toUpperCase()} ${leg.quantity} shares`;
+    }
+    return `${leg.action.toUpperCase()} ${leg.quantity} ${leg.type.toUpperCase()} $${leg.strike} exp ${expirationDate}`;
+  };
+
+  const getExpirationDate = (daysToExp: number) => {
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + daysToExp);
+    return expDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
   const getTradeTypeColor = (tradeType: string) => {
     if (tradeType.includes('call') || tradeType.includes('covered')) return 'bg-green-100 text-green-800';
     if (tradeType.includes('put') || tradeType.includes('protective')) return 'bg-red-100 text-red-800';
@@ -159,6 +195,8 @@ export const TodaysPick = () => {
 
   if (isOptionsStrategy) {
     const strategy = todaysPick as OptionsStrategy;
+    const expirationDate = getExpirationDate(strategy.days_to_expiration);
+    
     return (
       <Card className="border-2 border-primary/20">
         <CardHeader>
@@ -179,6 +217,36 @@ export const TodaysPick = () => {
           <div className="text-center">
             <h3 className="text-2xl font-bold text-primary">{strategy.symbol}</h3>
             <p className="text-muted-foreground">{strategy.strategy_name}</p>
+          </div>
+
+          {/* Strategy Explanation */}
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-semibold text-blue-900 mb-2">Strategy Explanation</h4>
+            <p className="text-blue-800 text-sm">{getStrategyExplanation(strategy.strategy_name)}</p>
+          </div>
+
+          {/* Trade Instructions */}
+          <div className="bg-green-50 p-4 rounded-lg">
+            <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              How to Execute This Trade
+            </h4>
+            <div className="space-y-2">
+              {Array.isArray(strategy.legs) && strategy.legs.map((leg, index) => (
+                <div key={index} className="flex items-center gap-2 text-sm">
+                  <span className="bg-green-200 text-green-800 px-2 py-1 rounded text-xs font-medium">
+                    LEG {index + 1}
+                  </span>
+                  <span className="font-mono text-green-800">
+                    {formatLegInstruction(leg, expirationDate)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-sm text-green-700">
+              <Calendar className="h-4 w-4" />
+              <span>All options expire: {expirationDate} ({strategy.days_to_expiration} days)</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -220,22 +288,22 @@ export const TodaysPick = () => {
             <ul className="space-y-1">
               <li className="flex items-start gap-2 text-sm">
                 <span className="text-primary font-medium">•</span>
-                <span>Strategy Type: {strategy.strategy_type}</span>
-              </li>
-              <li className="flex items-start gap-2 text-sm">
-                <span className="text-primary font-medium">•</span>
-                <span>Days to Expiration: {strategy.days_to_expiration}</span>
-              </li>
-              <li className="flex items-start gap-2 text-sm">
-                <span className="text-primary font-medium">•</span>
                 <span>Expected Return: ${Math.round(strategy.expected_return || 0)}</span>
               </li>
               {strategy.breakeven_points && strategy.breakeven_points.length > 0 && (
                 <li className="flex items-start gap-2 text-sm">
                   <span className="text-primary font-medium">•</span>
-                  <span>Breakeven: ${strategy.breakeven_points.map(bp => Math.round(bp)).join(', $')}</span>
+                  <span>Breakeven Price{strategy.breakeven_points.length > 1 ? 's' : ''}: ${strategy.breakeven_points.map(bp => Math.round(bp)).join(', $')}</span>
                 </li>
               )}
+              <li className="flex items-start gap-2 text-sm">
+                <span className="text-primary font-medium">•</span>
+                <span>Strategy Type: {strategy.strategy_type} outlook</span>
+              </li>
+              <li className="flex items-start gap-2 text-sm">
+                <span className="text-primary font-medium">•</span>
+                <span>Best if {strategy.symbol} stays {strategy.strategy_type === 'neutral' ? 'stable' : strategy.strategy_type === 'bullish' ? 'above breakeven' : 'below breakeven'}</span>
+              </li>
             </ul>
           </div>
 
