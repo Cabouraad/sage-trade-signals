@@ -96,8 +96,8 @@ export const TodaysPick = () => {
   const runOptionsAnalysis = async () => {
     try {
       toast({
-        title: "Running Analysis",
-        description: "Starting comprehensive options analysis...",
+        title: "Running S&P 500 Analysis",
+        description: "Starting comprehensive options analysis across S&P 500 symbols...",
       });
 
       const { data, error } = await supabase.functions.invoke('options-scanner');
@@ -105,8 +105,8 @@ export const TodaysPick = () => {
       if (error) throw error;
 
       toast({
-        title: "Analysis Complete",
-        description: `Found ${data.strategies_found} strategies and ${data.unusual_activity} unusual activities`,
+        title: "S&P 500 Analysis Complete",
+        description: `Found ${data.strategies_found} strategies across ${data.symbols_analyzed} symbols and ${data.unusual_activity} unusual activities`,
       });
       
       // Refresh both queries

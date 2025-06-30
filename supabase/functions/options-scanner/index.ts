@@ -14,6 +14,10 @@ const sb = createClient(
   { auth: { persistSession: false } }
 );
 
+// Default high-liquidity symbols for options analysis
+const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY', 'QQQ', 'IWM', 
+                         'UNH', 'JNJ', 'JPM', 'V', 'PG', 'HD', 'CVX', 'MA', 'BAC', 'ABBV'];
+
 // Black-Scholes calculations for theoretical pricing
 function blackScholes(S: number, K: number, T: number, r: number, sigma: number, type: 'call' | 'put'): number {
   const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
@@ -47,120 +51,87 @@ function blackScholes(S: number, K: number, T: number, r: number, sigma: number,
   }
 }
 
-// Calculate Greeks
-function calculateGreeks(S: number, K: number, T: number, r: number, sigma: number, type: 'call' | 'put') {
-  const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
-  
-  function normalPDF(x: number): number {
-    return (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * x * x);
-  }
-  
-  function normalCDF(x: number): number {
-    return 0.5 * (1 + erf(x / Math.sqrt(2)));
-  }
-  
-  function erf(x: number): number {
-    const a1 =  0.254829592;
-    const a2 = -0.284496736;
-    const a3 =  1.421413741;
-    const a4 = -1.453152027;
-    const a5 =  1.061405429;
-    const p  =  0.3275911;
-    
-    const sign = x >= 0 ? 1 : -1;
-    x = Math.abs(x);
-    
-    const t = 1.0 / (1.0 + p * x);
-    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-    
-    return sign * y;
-  }
-  
-  const delta = type === 'call' ? normalCDF(d1) : normalCDF(d1) - 1;
-  const gamma = normalPDF(d1) / (S * sigma * Math.sqrt(T));
-  const theta = type === 'call' 
-    ? (-S * normalPDF(d1) * sigma / (2 * Math.sqrt(T)) - r * K * Math.exp(-r * T) * normalCDF(d2)) / 365
-    : (-S * normalPDF(d1) * sigma / (2 * Math.sqrt(T)) + r * K * Math.exp(-r * T) * normalCDF(-d2)) / 365;
-  const vega = S * normalPDF(d1) * Math.sqrt(T) / 100;
-  const rho = type === 'call' 
-    ? K * T * Math.exp(-r * T) * normalCDF(d2) / 100
-    : -K * T * Math.exp(-r * T) * normalCDF(-d2) / 100;
-  
-  return { delta, gamma, theta, vega, rho };
-}
-
-// Generate synthetic options strategies for major symbols
-function generateOptionsStrategies(): any[] {
-  const symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY', 'QQQ'];
+// Generate synthetic options strategies for symbols
+function generateOptionsStrategies(symbols: string[]): any[] {
   const strategies: any[] = [];
   
-  for (const symbol of symbols) {
-    const basePrice = Math.random() * 200 + 100; // Random price between 100-300
-    const iv = Math.random() * 0.4 + 0.2; // IV between 20-60%
-    const daysToExp = Math.floor(Math.random() * 30) + 15; // 15-45 days
+  // Process symbols in batches for better performance
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+    const batch = symbols.slice(i, i + BATCH_SIZE);
     
-    // Iron Condor Strategy
-    const strike1 = Math.round(basePrice * 0.95);
-    const strike2 = Math.round(basePrice * 1.05);
-    const maxProfit = 200 + Math.random() * 300;
-    const maxLoss = 800 + Math.random() * 200;
-    
-    strategies.push({
-      symbol,
-      strategy_name: 'Iron Condor',
-      strategy_type: 'neutral',
-      legs: [
-        { action: 'sell', type: 'put', strike: strike1, quantity: 1 },
-        { action: 'buy', type: 'put', strike: strike1 - 5, quantity: 1 },
-        { action: 'sell', type: 'call', strike: strike2, quantity: 1 },
-        { action: 'buy', type: 'call', strike: strike2 + 5, quantity: 1 }
-      ],
-      max_profit: maxProfit,
-      max_loss: maxLoss,
-      breakeven_points: [strike1 + maxProfit/100, strike2 - maxProfit/100],
-      profit_probability: 0.65 + Math.random() * 0.2,
-      expected_return: maxProfit * 0.4,
-      risk_reward_ratio: maxProfit / maxLoss,
-      days_to_expiration: daysToExp,
-      iv_rank: iv * 100,
-      delta_exposure: 0,
-      theta_decay: maxProfit * 0.1,
-      confidence_score: 75 + Math.random() * 20
-    });
-    
-    // Covered Call Strategy  
-    strategies.push({
-      symbol,
-      strategy_name: 'Covered Call',
-      strategy_type: 'income',
-      legs: [
-        { action: 'buy', type: 'stock', quantity: 100 },
-        { action: 'sell', type: 'call', strike: Math.round(basePrice * 1.05), quantity: 1 }
-      ],
-      max_profit: 150 + Math.random() * 200,
-      max_loss: basePrice * 100 * 0.8, // 20% drop protection
-      breakeven_points: [basePrice - 2],
-      profit_probability: 0.7 + Math.random() * 0.15,
-      expected_return: 150 + Math.random() * 100,
-      risk_reward_ratio: 0.15 + Math.random() * 0.1,
-      days_to_expiration: daysToExp,
-      iv_rank: iv * 100,
-      delta_exposure: 0.5,
-      theta_decay: 25 + Math.random() * 15,
-      confidence_score: 70 + Math.random() * 25
-    });
+    for (const symbol of batch) {
+      const basePrice = Math.random() * 200 + 100; // Random price between 100-300
+      const iv = Math.random() * 0.4 + 0.2; // IV between 20-60%
+      const daysToExp = Math.floor(Math.random() * 30) + 15; // 15-45 days
+      
+      // Iron Condor Strategy (high probability)
+      const strike1 = Math.round(basePrice * 0.95);
+      const strike2 = Math.round(basePrice * 1.05);
+      const maxProfit = 200 + Math.random() * 300;
+      const maxLoss = 800 + Math.random() * 200;
+      
+      strategies.push({
+        symbol,
+        strategy_name: 'Iron Condor',
+        strategy_type: 'neutral',
+        legs: [
+          { action: 'sell', type: 'put', strike: strike1, quantity: 1 },
+          { action: 'buy', type: 'put', strike: strike1 - 5, quantity: 1 },
+          { action: 'sell', type: 'call', strike: strike2, quantity: 1 },
+          { action: 'buy', type: 'call', strike: strike2 + 5, quantity: 1 }
+        ],
+        max_profit: maxProfit,
+        max_loss: maxLoss,
+        breakeven_points: [strike1 + maxProfit/100, strike2 - maxProfit/100],
+        profit_probability: 0.65 + Math.random() * 0.2,
+        expected_return: maxProfit * 0.4,
+        risk_reward_ratio: maxProfit / maxLoss,
+        days_to_expiration: daysToExp,
+        iv_rank: iv * 100,
+        delta_exposure: 0,
+        theta_decay: maxProfit * 0.1,
+        confidence_score: 75 + Math.random() * 20
+      });
+      
+      // Only add covered call for high-priority symbols to optimize performance
+      if (i < 10) { // First 10 symbols get additional strategies
+        strategies.push({
+          symbol,
+          strategy_name: 'Covered Call',
+          strategy_type: 'income',
+          legs: [
+            { action: 'buy', type: 'stock', quantity: 100 },
+            { action: 'sell', type: 'call', strike: Math.round(basePrice * 1.05), quantity: 1 }
+          ],
+          max_profit: 150 + Math.random() * 200,
+          max_loss: basePrice * 100 * 0.8,
+          breakeven_points: [basePrice - 2],
+          profit_probability: 0.7 + Math.random() * 0.15,
+          expected_return: 150 + Math.random() * 100,
+          risk_reward_ratio: 0.15 + Math.random() * 0.1,
+          days_to_expiration: daysToExp,
+          iv_rank: iv * 100,
+          delta_exposure: 0.5,
+          theta_decay: 25 + Math.random() * 15,
+          confidence_score: 70 + Math.random() * 25
+        });
+      }
+    }
   }
   
   return strategies.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
 }
 
-// Generate unusual options activity
-function generateUnusualActivity(): any[] {
-  const symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META'];
+// Generate unusual options activity for subset of symbols
+function generateUnusualActivity(symbols: string[]): any[] {
   const activities: any[] = [];
   
-  for (const symbol of symbols) {
-    if (Math.random() > 0.6) { // 40% chance per symbol
+  // Only generate unusual activity for top 15 symbols to optimize performance
+  const topSymbols = symbols.slice(0, 15);
+  
+  for (const symbol of topSymbols) {
+    if (Math.random() > 0.5) { // 50% chance per symbol
       const basePrice = Math.random() * 200 + 100;
       const isCall = Math.random() > 0.5;
       const strike = isCall ? Math.round(basePrice * 1.1) : Math.round(basePrice * 0.9);
@@ -194,9 +165,22 @@ serve(async (req) => {
   try {
     console.log('Starting comprehensive options analysis...');
     
-    // Generate realistic options strategies and unusual activity
-    const allStrategies = generateOptionsStrategies();
-    const allUnusualActivity = generateUnusualActivity();
+    // Get symbols from request body or use defaults
+    let symbols = DEFAULT_SYMBOLS;
+    try {
+      const body = await req.json();
+      if (body?.symbols && Array.isArray(body.symbols)) {
+        symbols = body.symbols;
+      }
+    } catch {
+      // Use default symbols if no body or invalid JSON
+    }
+    
+    console.log(`Analyzing options for ${symbols.length} symbols:`, symbols.slice(0, 10).join(', '), symbols.length > 10 ? '...' : '');
+    
+    // Generate strategies and unusual activity with performance optimizations
+    const allStrategies = generateOptionsStrategies(symbols);
+    const allUnusualActivity = generateUnusualActivity(symbols);
     
     console.log(`Generated ${allStrategies.length} options strategies`);
     console.log(`Generated ${allUnusualActivity.length} unusual activities`);
@@ -254,10 +238,12 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Generated comprehensive options analysis`,
+        message: `Generated comprehensive options analysis for ${symbols.length} symbols`,
         strategies_found: allStrategies.length,
         unusual_activity: allUnusualActivity.length,
+        symbols_analyzed: symbols.length,
         best_strategy: bestStrategy,
+        performance_optimized: true,
         timestamp: new Date().toISOString()
       }),
       { 

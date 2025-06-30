@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { collectMarketData } from './data-collector.ts'
+import { SP500_SYMBOLS, HIGH_PRIORITY_SYMBOLS } from './sp500-symbols.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,18 +20,24 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('Starting daily job: Market data + Options Analysis...');
+    console.log('Starting daily job: S&P 500 Market Data + Options Analysis...');
 
-    // Step 1: Collect fresh market data for key symbols
-    const keySymbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY', 'QQQ', 'IWM'];
-    console.log('Collecting market data for key symbols:', keySymbols.join(', '));
+    // Parse request to see if full S&P 500 analysis is requested
+    const url = new URL(req.url);
+    const fullAnalysis = url.searchParams.get('full') === 'true';
     
-    const dataResult = await collectMarketData(supabaseClient, keySymbols);
+    // Step 1: Collect market data for S&P 500 symbols
+    console.log(`Collecting market data for ${fullAnalysis ? 'all S&P 500' : 'priority'} symbols...`);
+    
+    const dataResult = await collectMarketData(supabaseClient, fullAnalysis);
     console.log(`Data collection completed: ${dataResult.successfulUpdates} successful, ${dataResult.failedUpdates} failed`);
+    console.log(`Priority breakdown - High: ${dataResult.priorityResults.high}, Medium: ${dataResult.priorityResults.medium}, Low: ${dataResult.priorityResults.low}`);
 
-    // Step 2: Run comprehensive options analysis (PRIMARY FOCUS)
-    console.log('Running options scanner...');
-    const { data: optionsResult, error: optionsError } = await supabaseClient.functions.invoke('options-scanner');
+    // Step 2: Run comprehensive options analysis (focus on liquid symbols)
+    console.log('Running options scanner on liquid symbols...');
+    const { data: optionsResult, error: optionsError } = await supabaseClient.functions.invoke('options-scanner', {
+      body: { symbols: HIGH_PRIORITY_SYMBOLS } // Pass priority symbols to options scanner
+    });
 
     if (optionsError) {
       console.error('Error calling options-scanner:', optionsError);
@@ -65,15 +72,17 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Daily options analysis completed successfully',
+        message: `Daily S&P 500 analysis completed successfully (${fullAnalysis ? 'Full' : 'Priority'} mode)`,
         dataCollection: {
           successful: dataResult.successfulUpdates,
           failed: dataResult.failedUpdates,
-          symbols: dataResult.symbols
+          symbols: dataResult.symbols.length,
+          priorityBreakdown: dataResult.priorityResults
         },
         optionsAnalysis: optionsResult,
         stockRanking: stockRankingResult,
-        prioritizedOptions: true,
+        fullAnalysis,
+        symbolsProcessed: dataResult.symbols.length,
         timestamp: new Date().toISOString()
       }),
       { 
