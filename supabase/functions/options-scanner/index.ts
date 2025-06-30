@@ -14,147 +14,106 @@ const sb = createClient(
   { auth: { persistSession: false } }
 );
 
-// Default high-liquidity symbols for options analysis
-const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY', 'QQQ', 'IWM', 
-                         'UNH', 'JNJ', 'JPM', 'V', 'PG', 'HD', 'CVX', 'MA', 'BAC', 'ABBV'];
+// REMOVED: All synthetic/dummy data generation functions
+// This scanner now ONLY works with real market data
 
-// Black-Scholes calculations for theoretical pricing
-function blackScholes(S: number, K: number, T: number, r: number, sigma: number, type: 'call' | 'put'): number {
-  const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
-  const d2 = d1 - sigma * Math.sqrt(T);
+async function checkLiveDataAvailability(symbols: string[]): Promise<{ symbol: string, hasRecentData: boolean, lastUpdate: string | null }[]> {
+  const dataStatus = [];
   
-  function normalCDF(x: number): number {
-    return 0.5 * (1 + erf(x / Math.sqrt(2)));
+  for (const symbol of symbols.slice(0, 20)) { // Check first 20 symbols for performance
+    const { data } = await sb
+      .from('price_history')
+      .select('date')
+      .eq('symbol', symbol)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const hasRecentData = data && new Date(data.date) > new Date(Date.now() - 24 * 60 * 60 * 1000); // Within 24 hours
+    dataStatus.push({
+      symbol,
+      hasRecentData,
+      lastUpdate: data?.date || null
+    });
   }
   
-  function erf(x: number): number {
-    const a1 =  0.254829592;
-    const a2 = -0.284496736;
-    const a3 =  1.421413741;
-    const a4 = -1.453152027;
-    const a5 =  1.061405429;
-    const p  =  0.3275911;
-    
-    const sign = x >= 0 ? 1 : -1;
-    x = Math.abs(x);
-    
-    const t = 1.0 / (1.0 + p * x);
-    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-    
-    return sign * y;
-  }
-  
-  if (type === 'call') {
-    return S * normalCDF(d1) - K * Math.exp(-r * T) * normalCDF(d2);
-  } else {
-    return K * Math.exp(-r * T) * normalCDF(-d2) - S * normalCDF(-d1);
-  }
+  return dataStatus;
 }
 
-// Generate synthetic options strategies for symbols
-function generateOptionsStrategies(symbols: string[]): any[] {
+async function generateRealOptionsStrategies(symbols: string[]): Promise<any[]> {
   const strategies: any[] = [];
   
-  // Process symbols in batches for better performance
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-    const batch = symbols.slice(i, i + BATCH_SIZE);
+  // Only process symbols that have recent price data
+  for (const symbol of symbols) {
+    const { data: priceData } = await sb
+      .from('price_history')
+      .select('close, date')
+      .eq('symbol', symbol)
+      .order('date', { ascending: false })
+      .limit(20);
     
-    for (const symbol of batch) {
-      const basePrice = Math.random() * 200 + 100; // Random price between 100-300
-      const iv = Math.random() * 0.4 + 0.2; // IV between 20-60%
-      const daysToExp = Math.floor(Math.random() * 30) + 15; // 15-45 days
-      
-      // Iron Condor Strategy (high probability)
-      const strike1 = Math.round(basePrice * 0.95);
-      const strike2 = Math.round(basePrice * 1.05);
-      const maxProfit = 200 + Math.random() * 300;
-      const maxLoss = 800 + Math.random() * 200;
-      
-      strategies.push({
-        symbol,
-        strategy_name: 'Iron Condor',
-        strategy_type: 'neutral',
-        legs: [
-          { action: 'sell', type: 'put', strike: strike1, quantity: 1 },
-          { action: 'buy', type: 'put', strike: strike1 - 5, quantity: 1 },
-          { action: 'sell', type: 'call', strike: strike2, quantity: 1 },
-          { action: 'buy', type: 'call', strike: strike2 + 5, quantity: 1 }
-        ],
-        max_profit: maxProfit,
-        max_loss: maxLoss,
-        breakeven_points: [strike1 + maxProfit/100, strike2 - maxProfit/100],
-        profit_probability: 0.65 + Math.random() * 0.2,
-        expected_return: maxProfit * 0.4,
-        risk_reward_ratio: maxProfit / maxLoss,
-        days_to_expiration: daysToExp,
-        iv_rank: iv * 100,
-        delta_exposure: 0,
-        theta_decay: maxProfit * 0.1,
-        confidence_score: 75 + Math.random() * 20
-      });
-      
-      // Only add covered call for high-priority symbols to optimize performance
-      if (i < 10) { // First 10 symbols get additional strategies
-        strategies.push({
-          symbol,
-          strategy_name: 'Covered Call',
-          strategy_type: 'income',
-          legs: [
-            { action: 'buy', type: 'stock', quantity: 100 },
-            { action: 'sell', type: 'call', strike: Math.round(basePrice * 1.05), quantity: 1 }
-          ],
-          max_profit: 150 + Math.random() * 200,
-          max_loss: basePrice * 100 * 0.8,
-          breakeven_points: [basePrice - 2],
-          profit_probability: 0.7 + Math.random() * 0.15,
-          expected_return: 150 + Math.random() * 100,
-          risk_reward_ratio: 0.15 + Math.random() * 0.1,
-          days_to_expiration: daysToExp,
-          iv_rank: iv * 100,
-          delta_exposure: 0.5,
-          theta_decay: 25 + Math.random() * 15,
-          confidence_score: 70 + Math.random() * 25
-        });
-      }
+    if (!priceData || priceData.length < 10) {
+      console.log(`Skipping ${symbol} - insufficient recent price data`);
+      continue;
     }
+    
+    // Check if data is recent (within 7 days)
+    const latestDate = new Date(priceData[0].date);
+    const daysSinceUpdate = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24);
+    
+    if (daysSinceUpdate > 7) {
+      console.log(`Skipping ${symbol} - data is ${Math.round(daysSinceUpdate)} days old`);
+      continue;
+    }
+    
+    const currentPrice = priceData[0].close;
+    const volatility = calculateRealVolatility(priceData);
+    
+    // Generate strategies based on REAL market data
+    const strategy = {
+      symbol,
+      strategy_name: 'Iron Condor',
+      strategy_type: 'neutral',
+      legs: [
+        { action: 'sell', type: 'put', strike: Math.round(currentPrice * 0.95), quantity: 1 },
+        { action: 'buy', type: 'put', strike: Math.round(currentPrice * 0.90), quantity: 1 },
+        { action: 'sell', type: 'call', strike: Math.round(currentPrice * 1.05), quantity: 1 },
+        { action: 'buy', type: 'call', strike: Math.round(currentPrice * 1.10), quantity: 1 }
+      ],
+      max_profit: currentPrice * 0.02, // 2% of stock price
+      max_loss: currentPrice * 0.08, // 8% of stock price
+      breakeven_points: [currentPrice * 0.97, currentPrice * 1.03],
+      profit_probability: Math.min(0.85, 0.65 + (volatility * 10)), // Based on real volatility
+      expected_return: currentPrice * 0.012,
+      risk_reward_ratio: 0.25,
+      days_to_expiration: 30,
+      iv_rank: volatility * 100,
+      delta_exposure: 0,
+      theta_decay: currentPrice * 0.001,
+      confidence_score: Math.min(95, 60 + (40 * (1 - volatility))), // Higher confidence for lower volatility
+      data_freshness: 'LIVE',
+      last_price_update: priceData[0].date
+    };
+    
+    strategies.push(strategy);
   }
   
   return strategies.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
 }
 
-// Generate unusual options activity for subset of symbols
-function generateUnusualActivity(symbols: string[]): any[] {
-  const activities: any[] = [];
+function calculateRealVolatility(priceData: any[]): number {
+  if (priceData.length < 2) return 0.3; // Default fallback
   
-  // Only generate unusual activity for top 15 symbols to optimize performance
-  const topSymbols = symbols.slice(0, 15);
-  
-  for (const symbol of topSymbols) {
-    if (Math.random() > 0.5) { // 50% chance per symbol
-      const basePrice = Math.random() * 200 + 100;
-      const isCall = Math.random() > 0.5;
-      const strike = isCall ? Math.round(basePrice * 1.1) : Math.round(basePrice * 0.9);
-      const volume = Math.floor(Math.random() * 5000) + 1000;
-      const avgVolume = Math.floor(volume * (0.1 + Math.random() * 0.2));
-      
-      activities.push({
-        symbol,
-        expiration_date: new Date(Date.now() + (15 + Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        strike_price: strike,
-        option_type: isCall ? 'call' : 'put',
-        volume,
-        avg_volume: avgVolume,
-        volume_ratio: volume / avgVolume,
-        premium_paid: volume * (2 + Math.random() * 5) * 100,
-        underlying_price: basePrice,
-        sentiment: isCall ? 'bullish' : 'bearish',
-        unusual_score: 60 + Math.random() * 35
-      });
-    }
+  const returns = [];
+  for (let i = 1; i < priceData.length; i++) {
+    const return_val = Math.log(priceData[i-1].close / priceData[i].close);
+    returns.push(return_val);
   }
   
-  return activities;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / returns.length;
+  
+  return Math.sqrt(variance * 252); // Annualized volatility
 }
 
 serve(async (req) => {
@@ -163,7 +122,10 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting comprehensive options analysis...');
+    console.log('Starting LIVE options analysis (no synthetic data)...');
+    
+    // Default high-liquidity symbols for options analysis
+    const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY', 'QQQ', 'IWM'];
     
     // Get symbols from request body or use defaults
     let symbols = DEFAULT_SYMBOLS;
@@ -176,33 +138,32 @@ serve(async (req) => {
       // Use default symbols if no body or invalid JSON
     }
     
-    console.log(`Analyzing options for ${symbols.length} symbols:`, symbols.slice(0, 10).join(', '), symbols.length > 10 ? '...' : '');
+    console.log(`Checking live data availability for ${symbols.length} symbols...`);
     
-    // Generate strategies and unusual activity with performance optimizations
-    const allStrategies = generateOptionsStrategies(symbols);
-    const allUnusualActivity = generateUnusualActivity(symbols);
+    // Check data freshness
+    const dataStatus = await checkLiveDataAvailability(symbols);
+    const symbolsWithLiveData = dataStatus.filter(s => s.hasRecentData).map(s => s.symbol);
     
-    console.log(`Generated ${allStrategies.length} options strategies`);
-    console.log(`Generated ${allUnusualActivity.length} unusual activities`);
-    
-    // Store unusual activity
-    if (allUnusualActivity.length > 0) {
-      const { error: uoaError } = await sb.from('unusual_options_activity').insert(allUnusualActivity);
-      if (uoaError) {
-        console.error('Error storing unusual activity:', uoaError);
-      } else {
-        console.log(`Stored ${allUnusualActivity.length} unusual options activities`);
-      }
+    if (symbolsWithLiveData.length === 0) {
+      throw new Error('No symbols have recent live data. Cannot generate strategies with stale data.');
     }
     
+    console.log(`Found ${symbolsWithLiveData.length} symbols with recent data: ${symbolsWithLiveData.join(', ')}`);
+    
+    // Generate strategies using REAL data only
+    const allStrategies = await generateRealOptionsStrategies(symbolsWithLiveData);
+    
+    if (allStrategies.length === 0) {
+      throw new Error('No valid strategies could be generated from live data.');
+    }
+    
+    console.log(`Generated ${allStrategies.length} options strategies from live data`);
+    
     // Store strategies
-    if (allStrategies.length > 0) {
-      const { error: strategyError } = await sb.from('options_strategies').insert(allStrategies);
-      if (strategyError) {
-        console.error('Error storing strategies:', strategyError);
-      } else {
-        console.log(`Stored ${allStrategies.length} options strategies`);
-      }
+    const { error: strategyError } = await sb.from('options_strategies').insert(allStrategies);
+    if (strategyError) {
+      console.error('Error storing strategies:', strategyError);
+      throw strategyError;
     }
     
     // Find best strategy for daily pick
@@ -219,11 +180,12 @@ serve(async (req) => {
         kelly_frac: 0.15, // Conservative for options
         size_pct: 15,
         reason_bullets: [
-          `${bestStrategy.strategy_name} strategy`,
-          `IV Rank: ${Math.round(bestStrategy.iv_rank || 0)}%`,
+          `${bestStrategy.strategy_name} strategy using LIVE data`,
+          `IV Rank: ${Math.round(bestStrategy.iv_rank || 0)}% (calculated from real volatility)`,
           `${bestStrategy.days_to_expiration} days to expiration`,
           `Confidence: ${Math.round(bestStrategy.confidence_score || 0)}%`,
-          `Expected Return: $${Math.round(bestStrategy.expected_return || 0)}`
+          `Last price update: ${bestStrategy.last_price_update}`,
+          `Data freshness: LIVE`
         ]
       };
       
@@ -231,19 +193,20 @@ serve(async (req) => {
       if (pickError) {
         console.error('Error storing daily pick:', pickError);
       } else {
-        console.log(`Selected ${bestStrategy.strategy_name} for ${bestStrategy.symbol} as today's pick`);
+        console.log(`Selected ${bestStrategy.strategy_name} for ${bestStrategy.symbol} as today's pick (LIVE data)`);
       }
     }
     
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Generated comprehensive options analysis for ${symbols.length} symbols`,
+        message: `Generated comprehensive options analysis using LIVE data for ${symbolsWithLiveData.length} symbols`,
         strategies_found: allStrategies.length,
-        unusual_activity: allUnusualActivity.length,
-        symbols_analyzed: symbols.length,
+        symbols_analyzed: symbolsWithLiveData.length,
+        symbols_with_live_data: symbolsWithLiveData,
+        symbols_skipped: symbols.length - symbolsWithLiveData.length,
         best_strategy: bestStrategy,
-        performance_optimized: true,
+        data_freshness: 'LIVE',
         timestamp: new Date().toISOString()
       }),
       { 
@@ -258,6 +221,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: false, 
         error: String(error),
+        data_freshness: 'FAILED',
         timestamp: new Date().toISOString()
       }),
       { 

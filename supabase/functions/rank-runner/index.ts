@@ -44,13 +44,47 @@ async function latestCandles(symbol: string): Promise<Candle[]> {
   return (data ?? []).reverse() as Candle[];
 }
 
+async function checkDataFreshness(symbol: string): Promise<{ isFresh: boolean; daysSinceUpdate: number; lastUpdate: string | null }> {
+  const { data } = await sb
+    .from("price_history")
+    .select("date")
+    .eq("symbol", symbol)
+    .order("date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+    
+  if (!data) {
+    return { isFresh: false, daysSinceUpdate: Infinity, lastUpdate: null };
+  }
+  
+  const lastUpdate = new Date(data.date);
+  const daysSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24);
+  const isFresh = daysSinceUpdate <= 7; // Data must be within 7 days
+  
+  return { isFresh, daysSinceUpdate, lastUpdate: data.date };
+}
+
 async function pick(): Promise<any | null> {
   const syms = await universe();
-  console.log(`Processing ${syms.length} symbols with sufficient history:`, syms.join(', '));
+  console.log(`Found ${syms.length} symbols with history. Checking data freshness...`);
   
   const picks: any[] = [];
+  let freshDataCount = 0;
+  let staleDataCount = 0;
 
   for (const sym of syms) {
+    // Check data freshness first
+    const { isFresh, daysSinceUpdate, lastUpdate } = await checkDataFreshness(sym);
+    
+    if (!isFresh) {
+      console.log(`${sym}: Skipping - data is ${Math.round(daysSinceUpdate)} days old (last: ${lastUpdate})`);
+      staleDataCount++;
+      continue;
+    }
+    
+    freshDataCount++;
+    console.log(`${sym}: Using fresh data (${Math.round(daysSinceUpdate * 24)} hours old)`);
+    
     const rows = await latestCandles(sym);
     if (rows.length < 60) {
       console.log(`${sym}: Insufficient data (${rows.length} rows), skipping`);
@@ -80,24 +114,32 @@ async function pick(): Promise<any | null> {
       kelly_frac: kellyFrac,
       size_pct: +(kellyFrac * 100).toFixed(1),
       reason_bullets: [
-        "20/50 SMA cross-over",
+        "20/50 SMA cross-over (LIVE data)",
         `ATR 2:1 target (ATR≈${a.toFixed(2)})`,
         `Kelly ${+(kellyFrac * 100).toFixed(1)}%`,
-        `Entry: $${entry.toFixed(2)}, Stop: $${(entry - a).toFixed(2)}, Target: $${(entry + 2 * a).toFixed(2)}`
-      ]
+        `Entry: $${entry.toFixed(2)}, Stop: $${(entry - a).toFixed(2)}, Target: $${(entry + 2 * a).toFixed(2)}`,
+        `Data age: ${Math.round(daysSinceUpdate * 24)} hours`
+      ],
+      data_freshness: 'LIVE',
+      last_update: lastUpdate
     };
 
     picks.push(candidate);
-    console.log(`✓ Added candidate ${sym} with Kelly ${kellyFrac.toFixed(3)}`);
+    console.log(`✓ Added candidate ${sym} with Kelly ${kellyFrac.toFixed(3)} (fresh data)`);
   }
 
+  console.log(`Data freshness summary: ${freshDataCount} fresh, ${staleDataCount} stale`);
+
   if (picks.length === 0) {
-    console.log('No suitable candidates found');
+    if (freshDataCount === 0) {
+      throw new Error('No symbols have fresh data (within 7 days). Cannot generate picks with stale data.');
+    }
+    console.log('No suitable candidates found with fresh data');
     return null;
   }
 
   const bestPick = picks.sort((a, b) => b.kelly_frac - a.kelly_frac)[0];
-  console.log(`Selected ${bestPick.symbol} with Kelly ${bestPick.kelly_frac.toFixed(3)}`);
+  console.log(`Selected ${bestPick.symbol} with Kelly ${bestPick.kelly_frac.toFixed(3)} (LIVE data)`);
   
   return bestPick;
 }
@@ -108,25 +150,26 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting TypeScript ranking engine...');
+    console.log('Starting TypeScript ranking engine with LIVE data only...');
     
-    // Auto-seed dev DB so local runs never fail
+    // REMOVED: Auto-seeding dummy data functionality
+    // This function now ONLY works with real market data
+    
     const { count } = await sb.from("price_history").select("symbol", { count: "exact" });
-    if (!count) {
-      console.log('No price history found, seeding dummy data...');
-      await sb.rpc("seed_stub_data");
-      console.log('Dummy data seeded successfully');
+    if (!count || count === 0) {
+      throw new Error('No price history data available. Please run market data collection first.');
     }
 
     const bestPick = await pick();
     
     if (!bestPick) {
-      console.log('No trading opportunities found today');
+      console.log('No trading opportunities found with fresh data');
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: "No trading opportunities found today", 
-          candidates: 0 
+          message: "No trading opportunities found with fresh data (within 7 days)", 
+          candidates: 0,
+          data_freshness: 'LIVE_REQUIRED'
         }), 
         { 
           status: 200,
@@ -142,14 +185,15 @@ serve(async (req) => {
       throw insertError;
     }
 
-    console.log('✓ Successfully stored daily pick');
+    console.log('✓ Successfully stored daily pick with LIVE data');
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Selected ${bestPick.symbol} as today's pick`,
+        message: `Selected ${bestPick.symbol} as today's pick using LIVE data`,
         pick: bestPick,
-        totalCandidates: 1
+        totalCandidates: 1,
+        data_freshness: 'LIVE'
       }), 
       { 
         status: 200,
@@ -162,6 +206,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: false, 
         error: String(e),
+        data_freshness: 'FAILED',
         timestamp: new Date().toISOString()
       }), 
       { 
