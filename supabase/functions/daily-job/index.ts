@@ -2,7 +2,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { collectMarketData } from './data-collector.ts'
-import { SP500_SYMBOLS, HIGH_PRIORITY_SYMBOLS } from './sp500-symbols.ts'
+import { runOptionsAnalysis, runStockRanking } from './analysis-orchestrator.ts'
+import { HIGH_PRIORITY_SYMBOLS } from './sp500-symbols.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,41 +34,11 @@ serve(async (req) => {
     console.log(`Data collection completed: ${dataResult.successfulUpdates} successful, ${dataResult.failedUpdates} failed`);
     console.log(`Priority breakdown - High: ${dataResult.priorityResults.high}, Medium: ${dataResult.priorityResults.medium}, Low: ${dataResult.priorityResults.low}`);
 
-    // Step 2: Run comprehensive options analysis (focus on liquid symbols)
-    console.log('Running options scanner on liquid symbols...');
-    const { data: optionsResult, error: optionsError } = await supabaseClient.functions.invoke('options-scanner', {
-      body: { symbols: HIGH_PRIORITY_SYMBOLS } // Pass priority symbols to options scanner
-    });
+    // Step 2: Run comprehensive options analysis
+    const optionsResult = await runOptionsAnalysis(supabaseClient, HIGH_PRIORITY_SYMBOLS);
 
-    if (optionsError) {
-      console.error('Error calling options-scanner:', optionsError);
-    } else {
-      console.log('Options analysis result:', optionsResult);
-    }
-
-    // Step 3: Only run stock ranking if no options strategies were found
-    let stockRankingResult = null;
-    
-    // Check if we have any recent options strategies
-    const { data: existingStrategies } = await supabaseClient
-      .from('options_strategies')
-      .select('id')
-      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .limit(1);
-
-    if (!existingStrategies || existingStrategies.length === 0) {
-      console.log('No options strategies found, running stock ranking as fallback...');
-      const { data: rankingResult, error: rankingError } = await supabaseClient.functions.invoke('rank-runner');
-      
-      if (rankingError) {
-        console.error('Error calling rank-runner:', rankingError);
-      } else {
-        stockRankingResult = rankingResult;
-        console.log('Stock ranking result:', stockRankingResult);
-      }
-    } else {
-      console.log('Options strategies found, skipping stock ranking');
-    }
+    // Step 3: Run stock ranking if needed
+    const stockRankingResult = await runStockRanking(supabaseClient);
 
     return new Response(
       JSON.stringify({
