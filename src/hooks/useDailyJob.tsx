@@ -3,10 +3,6 @@ import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
-// Type-safety guard to prevent passing arguments
-// @ts-expect-error -- runDailyJob never accepts arguments
-export const runDailyJob: () => Promise<any>;
-
 export const useDailyJob = () => {
   const [engineStatus, setEngineStatus] = useState<any>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
