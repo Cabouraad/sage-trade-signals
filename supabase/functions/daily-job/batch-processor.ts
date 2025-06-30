@@ -1,5 +1,6 @@
 
 import { MarketDataResult } from './market-data-fetcher.ts';
+import { createCleanResult } from './data-sanitizer.ts';
 
 export interface BatchResult {
   successful: number;
@@ -26,26 +27,34 @@ export async function processBatch<T>(
     try {
       // Process batch concurrently
       const batchPromises = batch.map(item => processor(item));
-      const batchResults = await Promise.all(batchPromises);
+      const batchResults = await Promise.allSettled(batchPromises);
       
-      // Clean results to avoid circular references
-      const cleanResults = batchResults.map(result => ({
-        symbol: result.symbol,
-        success: result.success,
-        data: result.data ? JSON.parse(JSON.stringify(result.data)) : undefined,
-        error: result.error
-      }));
-      
-      results.push(...cleanResults);
-      
-      // Count successes and failures
-      cleanResults.forEach(result => {
-        if (result.success) {
-          successful++;
+      // Process results and handle any rejections
+      const cleanResults = batchResults.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          const cleanResult = createCleanResult(
+            result.value.symbol,
+            result.value.success,
+            result.value.data,
+            result.value.error
+          );
+          
+          if (cleanResult.success) {
+            successful++;
+          } else {
+            failed++;
+          }
+          
+          return cleanResult;
         } else {
+          // Handle rejected promises
+          const symbol = typeof batch[index] === 'string' ? batch[index] as string : 'unknown';
           failed++;
+          return createCleanResult(symbol, false, undefined, result.reason?.message || 'Promise rejected');
         }
       });
+      
+      results.push(...cleanResults);
 
       // Add delay between batches (except for the last batch)
       if (i + batchSize < items.length) {
@@ -56,11 +65,8 @@ export async function processBatch<T>(
       console.error(`Batch processing error:`, error.message);
       // Mark all items in this batch as failed
       batch.forEach(item => {
-        results.push({
-          symbol: typeof item === 'string' ? item : 'unknown',
-          success: false,
-          error: error.message
-        });
+        const symbol = typeof item === 'string' ? item : 'unknown';
+        results.push(createCleanResult(symbol, false, undefined, error.message));
         failed++;
       });
     }

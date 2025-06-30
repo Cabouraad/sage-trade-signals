@@ -2,6 +2,8 @@
 const ALPHA_VANTAGE_API_KEY = Deno.env.get('ALPHA_VANTAGE_API_KEY');
 const BASE_URL = 'https://www.alphavantage.co/query';
 
+import { createCleanResult, sanitizeData } from './data-sanitizer.ts';
+
 export interface MarketDataResult {
   symbol: string;
   success: boolean;
@@ -12,7 +14,7 @@ export interface MarketDataResult {
 export async function fetchMarketData(symbol: string): Promise<MarketDataResult> {
   if (!ALPHA_VANTAGE_API_KEY) {
     console.error('Alpha Vantage API key not configured');
-    return { symbol, success: false, error: 'API key not configured' };
+    return createCleanResult(symbol, false, undefined, 'API key not configured');
   }
 
   try {
@@ -25,40 +27,34 @@ export async function fetchMarketData(symbol: string): Promise<MarketDataResult>
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    const data = await response.json();
+    const rawData = await response.json();
     
     // Check for API errors
-    if (data['Error Message']) {
-      throw new Error(data['Error Message']);
+    if (rawData['Error Message']) {
+      throw new Error(rawData['Error Message']);
     }
     
-    if (data['Note']) {
+    if (rawData['Note']) {
       throw new Error('API call frequency limit reached');
     }
     
-    // Return only the data we need, avoiding circular references
-    return {
-      symbol,
-      success: true,
-      data: {
-        'Meta Data': data['Meta Data'],
-        'Time Series (Daily)': data['Time Series (Daily)']
-      }
+    // Create clean data structure
+    const cleanData = {
+      'Meta Data': sanitizeData(rawData['Meta Data']),
+      'Time Series (Daily)': sanitizeData(rawData['Time Series (Daily)'])
     };
+    
+    return createCleanResult(symbol, true, cleanData);
     
   } catch (error) {
     console.error(`Error fetching data for ${symbol}:`, error.message);
-    return { 
-      symbol, 
-      success: false, 
-      error: error.message 
-    };
+    return createCleanResult(symbol, false, undefined, error.message);
   }
 }
 
 export async function fetchNewsData(symbol: string): Promise<MarketDataResult> {
   if (!ALPHA_VANTAGE_API_KEY) {
-    return { symbol, success: false, error: 'API key not configured' };
+    return createCleanResult(symbol, false, undefined, 'API key not configured');
   }
 
   try {
@@ -71,38 +67,32 @@ export async function fetchNewsData(symbol: string): Promise<MarketDataResult> {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    const data = await response.json();
+    const rawData = await response.json();
     
-    if (data['Error Message'] || data['Note']) {
-      throw new Error(data['Error Message'] || 'API call frequency limit reached');
+    if (rawData['Error Message'] || rawData['Note']) {
+      throw new Error(rawData['Error Message'] || 'API call frequency limit reached');
     }
     
-    // Return clean data structure
-    return {
-      symbol,
-      success: true,
-      data: {
-        items: data.items || 0,
-        sentiment_score_definition: data.sentiment_score_definition,
-        relevance_score_definition: data.relevance_score_definition,
-        feed: (data.feed || []).map((item: any) => ({
-          title: item.title,
-          url: item.url,
-          time_published: item.time_published,
-          summary: item.summary,
-          overall_sentiment_score: item.overall_sentiment_score,
-          overall_sentiment_label: item.overall_sentiment_label,
-          ticker_sentiment: item.ticker_sentiment || []
-        }))
-      }
+    // Create clean data structure
+    const cleanData = {
+      items: rawData.items || 0,
+      sentiment_score_definition: sanitizeData(rawData.sentiment_score_definition),
+      relevance_score_definition: sanitizeData(rawData.relevance_score_definition),
+      feed: (rawData.feed || []).map((item: any) => ({
+        title: String(item.title || ''),
+        url: String(item.url || ''),
+        time_published: String(item.time_published || ''),
+        summary: String(item.summary || ''),
+        overall_sentiment_score: Number(item.overall_sentiment_score || 0),
+        overall_sentiment_label: String(item.overall_sentiment_label || ''),
+        ticker_sentiment: sanitizeData(item.ticker_sentiment || [])
+      }))
     };
+    
+    return createCleanResult(symbol, true, cleanData);
     
   } catch (error) {
     console.error(`Error fetching news for ${symbol}:`, error.message);
-    return { 
-      symbol, 
-      success: false, 
-      error: error.message 
-    };
+    return createCleanResult(symbol, false, undefined, error.message);
   }
 }

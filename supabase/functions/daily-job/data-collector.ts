@@ -1,8 +1,8 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { fetchMarketData, fetchNewsData } from './market-data-fetcher.ts';
 import { processBatch } from './batch-processor.ts';
-import { SP500_SYMBOLS, HIGH_PRIORITY_SYMBOLS, MEDIUM_PRIORITY_SYMBOLS } from './sp500-symbols.ts';
+import { SP500_SYMBOLS, HIGH_PRIORITY_SYMBOLS } from './sp500-symbols.ts';
+import { sanitizeData, safeStringify } from './data-sanitizer.ts';
 
 export interface DataCollectionResult {
   successfulUpdates: number;
@@ -48,19 +48,25 @@ async function storeMarketData(supabaseClient: any, symbol: string, data: any): 
 
     const records = Object.entries(timeSeries)
       .slice(0, 100) // Limit to last 100 days to avoid overwhelming the DB
-      .map(([date, values]: [string, any]) => ({
-        symbol,
-        date,
-        open: parseFloat(values['1. open']),
-        high: parseFloat(values['2. high']),
-        low: parseFloat(values['3. low']),
-        close: parseFloat(values['4. close']),
-        volume: parseInt(values['5. volume'])
-      }));
+      .map(([date, values]: [string, any]) => {
+        // Ensure all values are properly sanitized and typed
+        return {
+          symbol: String(symbol),
+          date: String(date),
+          open: parseFloat(values['1. open']) || 0,
+          high: parseFloat(values['2. high']) || 0,
+          low: parseFloat(values['3. low']) || 0,
+          close: parseFloat(values['4. close']) || 0,
+          volume: parseInt(values['5. volume']) || 0
+        };
+      });
+
+    // Clean the records before insertion
+    const cleanRecords = sanitizeData(records);
 
     const { error } = await supabaseClient
       .from('price_history')
-      .upsert(records, { onConflict: 'symbol,date' });
+      .upsert(cleanRecords, { onConflict: 'symbol,date' });
 
     if (error) {
       console.error(`Error storing data for ${symbol}:`, error.message);
@@ -130,10 +136,14 @@ export async function collectMarketData(supabaseClient: any, fullAnalysis: boole
   // Calculate priority breakdown
   const priorityResults = {
     high: batchResult.results.filter(r => HIGH_PRIORITY_SYMBOLS.includes(r.symbol) && r.success).length,
-    medium: batchResult.results.filter(r => MEDIUM_PRIORITY_SYMBOLS.includes(r.symbol) && r.success).length,
+    medium: batchResult.results.filter(r => 
+      !HIGH_PRIORITY_SYMBOLS.includes(r.symbol) && 
+      SP500_SYMBOLS.slice(50, 150).includes(r.symbol) && 
+      r.success
+    ).length,
     low: batchResult.results.filter(r => 
       !HIGH_PRIORITY_SYMBOLS.includes(r.symbol) && 
-      !MEDIUM_PRIORITY_SYMBOLS.includes(r.symbol) && 
+      !SP500_SYMBOLS.slice(50, 150).includes(r.symbol) && 
       r.success
     ).length
   };
