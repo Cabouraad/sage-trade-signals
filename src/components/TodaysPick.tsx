@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 export const TodaysPick = () => {
   const { todaysOptionsStrategy, todaysStockPick, isLoading } = useTodaysPick();
 
+  // Fix: Call options analysis with no arguments to prevent serialization issues
   const runOptionsAnalysis = async () => {
     try {
       toast({
@@ -18,6 +19,7 @@ export const TodaysPick = () => {
         description: "Starting comprehensive options analysis across S&P 500 symbols...",
       });
 
+      // No body needed - prevents DOM serialization issues
       const { data, error } = await supabase.functions.invoke('options-scanner');
       
       if (error) throw error;

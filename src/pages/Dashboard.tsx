@@ -26,12 +26,15 @@ const Dashboard = () => {
     return null; // This will be handled by useAuth redirect
   }
 
+  // Fix: Call runDailyJob with no arguments
+  const handleRunDailyJob = () => runDailyJob();
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader 
         user={user}
         onSignOut={handleSignOut}
-        onRunDailyJob={runDailyJob}
+        onRunDailyJob={handleRunDailyJob}
       />
       <main className="container mx-auto px-4 py-8 space-y-8">
         <DashboardHero engineStatus={engineStatus} />

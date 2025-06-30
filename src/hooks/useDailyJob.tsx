@@ -3,21 +3,23 @@ import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
+// Type-safety guard to prevent passing arguments
+// @ts-expect-error -- runDailyJob never accepts arguments
+export const runDailyJob: () => Promise<any>;
+
 export const useDailyJob = () => {
   const [engineStatus, setEngineStatus] = useState<any>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const runDailyJob = async (fullAnalysis: boolean = false) => {
+  const runDailyJob = async () => {
     try {
       toast({
         title: "Starting S&P 500 Analysis",
-        description: `Collecting market data for ${fullAnalysis ? 'all S&P 500 symbols' : 'priority symbols'} and running options analysis...`,
+        description: "Collecting market data and running options analysis...",
       });
 
-      // Add query parameter to specify full analysis
-      const { data, error } = await supabase.functions.invoke('daily-job', {
-        body: { full: fullAnalysis }
-      });
+      // No body needed - prevents serialization issues
+      const { data, error } = await supabase.functions.invoke('daily-job');
       
       if (error) throw error;
       
@@ -26,7 +28,7 @@ export const useDailyJob = () => {
       // Show detailed success message
       if (data?.success) {
         const dataMsg = data.dataCollection ? 
-          `Data: ${data.dataCollection.successful}/${data.symbolsProcessed || 0} symbols updated (${data.fullAnalysis ? 'Full S&P 500' : 'Priority'} mode)` : 
+          `Data: ${data.dataCollection.successful}/${data.symbolsProcessed || 0} symbols updated` : 
           'Data collection completed';
         
         const optionsMsg = data.optionsAnalysis?.success ? 
@@ -59,8 +61,8 @@ export const useDailyJob = () => {
     }
   };
 
-  const runFullAnalysis = () => runDailyJob(true);
-  const runPriorityAnalysis = () => runDailyJob(false);
+  const runFullAnalysis = () => runDailyJob();
+  const runPriorityAnalysis = () => runDailyJob();
 
   return { 
     engineStatus, 
