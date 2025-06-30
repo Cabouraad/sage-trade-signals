@@ -1,7 +1,8 @@
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { SP500_SYMBOLS, HIGH_PRIORITY_SYMBOLS, MEDIUM_PRIORITY_SYMBOLS } from './sp500-symbols.ts'
-import { processBatch } from './batch-processor.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { fetchMarketData, fetchNewsData } from './market-data-fetcher.ts';
+import { processBatch } from './batch-processor.ts';
+import { SP500_SYMBOLS, HIGH_PRIORITY_SYMBOLS, MEDIUM_PRIORITY_SYMBOLS } from './sp500-symbols.ts';
 
 export interface DataCollectionResult {
   successfulUpdates: number;
@@ -14,45 +15,135 @@ export interface DataCollectionResult {
   };
 }
 
-export async function collectMarketData(supabaseClient: any, useFullSP500: boolean = true): Promise<DataCollectionResult> {
-  const avKey = Deno.env.get('AV_KEY');
-  const finnhubKey = Deno.env.get('FINNHUB_KEY');
+async function shouldUpdateSymbol(supabaseClient: any, symbol: string): Promise<boolean> {
+  try {
+    const { data } = await supabaseClient
+      .from('price_history')
+      .select('date')
+      .eq('symbol', symbol)
+      .order('date', { ascending: false })
+      .limit(1);
+
+    if (!data || data.length === 0) return true;
+
+    const lastUpdate = new Date(data[0].date);
+    const now = new Date();
+    const hoursSinceUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60);
+
+    // Update if more than 6 hours old
+    return hoursSinceUpdate > 6;
+  } catch (error) {
+    console.error(`Error checking update status for ${symbol}:`, error);
+    return true; // Default to updating if we can't check
+  }
+}
+
+async function storeMarketData(supabaseClient: any, symbol: string, data: any): Promise<boolean> {
+  try {
+    const timeSeries = data['Time Series (Daily)'];
+    if (!timeSeries) {
+      console.error(`No time series data for ${symbol}`);
+      return false;
+    }
+
+    const records = Object.entries(timeSeries)
+      .slice(0, 100) // Limit to last 100 days to avoid overwhelming the DB
+      .map(([date, values]: [string, any]) => ({
+        symbol,
+        date,
+        open: parseFloat(values['1. open']),
+        high: parseFloat(values['2. high']),
+        low: parseFloat(values['3. low']),
+        close: parseFloat(values['4. close']),
+        volume: parseInt(values['5. volume'])
+      }));
+
+    const { error } = await supabaseClient
+      .from('price_history')
+      .upsert(records, { onConflict: 'symbol,date' });
+
+    if (error) {
+      console.error(`Error storing data for ${symbol}:`, error.message);
+      return false;
+    }
+
+    console.log(`✓ Stored ${records.length} records for ${symbol}`);
+    return true;
+  } catch (error) {
+    console.error(`Error processing data for ${symbol}:`, error.message);
+    return false;
+  }
+}
+
+export async function collectMarketData(supabaseClient: any, fullAnalysis: boolean = false): Promise<DataCollectionResult> {
+  console.log(`Starting market data collection (${fullAnalysis ? 'Full S&P 500' : 'Priority symbols'})...`);
   
-  if (!avKey) {
-    console.warn('Alpha Vantage API key not found - using existing data if available');
+  // Determine which symbols to process
+  const symbolsToProcess = fullAnalysis ? SP500_SYMBOLS : HIGH_PRIORITY_SYMBOLS;
+  console.log(`Processing ${symbolsToProcess.length} symbols`);
+
+  // Filter symbols that need updates
+  const symbolsNeedingUpdate: string[] = [];
+  
+  for (const symbol of symbolsToProcess) {
+    if (await shouldUpdateSymbol(supabaseClient, symbol)) {
+      symbolsNeedingUpdate.push(symbol);
+    }
   }
 
-  console.log('API Keys configured:', { 
-    alphaVantage: !!avKey, 
-    finnhub: !!finnhubKey 
-  });
+  console.log(`${symbolsNeedingUpdate.length} symbols need updates`);
 
-  // Determine symbols to process based on efficiency mode
-  let symbolsToProcess: string[];
-  if (useFullSP500) {
-    symbolsToProcess = SP500_SYMBOLS;
-    console.log(`Processing all ${SP500_SYMBOLS.length} S&P 500 symbols`);
-  } else {
-    symbolsToProcess = [...HIGH_PRIORITY_SYMBOLS, ...MEDIUM_PRIORITY_SYMBOLS.slice(0, 10)];
-    console.log(`Processing ${symbolsToProcess.length} priority symbols`);
+  if (symbolsNeedingUpdate.length === 0) {
+    return {
+      successfulUpdates: 0,
+      failedUpdates: 0,
+      symbols: symbolsToProcess,
+      priorityResults: { high: 0, medium: 0, low: 0 }
+    };
   }
 
+  // Process market data in batches
   const batchResult = await processBatch(
-    supabaseClient,
-    symbolsToProcess,
-    avKey,
-    finnhubKey,
-    HIGH_PRIORITY_SYMBOLS,
-    MEDIUM_PRIORITY_SYMBOLS
+    symbolsNeedingUpdate,
+    fetchMarketData,
+    5, // batch size
+    12000 // 12 second delay between batches
   );
 
-  console.log(`Data collection complete: ${batchResult.successfulUpdates} successful, ${batchResult.failedUpdates} failed`);
-  console.log(`Priority breakdown - High: ${batchResult.priorityResults.high}, Medium: ${batchResult.priorityResults.medium}, Low: ${batchResult.priorityResults.low}`);
-  
-  return { 
-    successfulUpdates: batchResult.successfulUpdates, 
-    failedUpdates: batchResult.failedUpdates, 
+  // Store successful results
+  let successfulStores = 0;
+  let failedStores = 0;
+
+  for (const result of batchResult.results) {
+    if (result.success && result.data) {
+      const stored = await storeMarketData(supabaseClient, result.symbol, result.data);
+      if (stored) {
+        successfulStores++;
+      } else {
+        failedStores++;
+      }
+    } else {
+      failedStores++;
+    }
+  }
+
+  // Calculate priority breakdown
+  const priorityResults = {
+    high: batchResult.results.filter(r => HIGH_PRIORITY_SYMBOLS.includes(r.symbol) && r.success).length,
+    medium: batchResult.results.filter(r => MEDIUM_PRIORITY_SYMBOLS.includes(r.symbol) && r.success).length,
+    low: batchResult.results.filter(r => 
+      !HIGH_PRIORITY_SYMBOLS.includes(r.symbol) && 
+      !MEDIUM_PRIORITY_SYMBOLS.includes(r.symbol) && 
+      r.success
+    ).length
+  };
+
+  console.log(`Market data collection completed: ${successfulStores} successful, ${failedStores} failed`);
+
+  return {
+    successfulUpdates: successfulStores,
+    failedUpdates: failedStores,
     symbols: symbolsToProcess,
-    priorityResults: batchResult.priorityResults 
+    priorityResults
   };
 }

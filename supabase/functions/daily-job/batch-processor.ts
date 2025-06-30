@@ -1,83 +1,74 @@
 
-import { fetchMarketData } from './market-data-fetcher.ts'
-import { collectNewsSentiment } from './news-collector.ts'
-import { HIGH_PRIORITY_SYMBOLS } from './sp500-symbols.ts'
+import { MarketDataResult } from './market-data-fetcher.ts';
 
 export interface BatchResult {
-  successfulUpdates: number;
-  failedUpdates: number;
-  priorityResults: {
-    high: number;
-    medium: number;
-    low: number;
-  };
+  successful: number;
+  failed: number;
+  results: MarketDataResult[];
 }
 
-export async function processBatch(
-  supabaseClient: any,
-  symbols: string[],
-  avKey: string | undefined,
-  finnhubKey: string | undefined,
-  highPrioritySymbols: string[],
-  mediumPrioritySymbols: string[]
+export async function processBatch<T>(
+  items: T[], 
+  processor: (item: T) => Promise<MarketDataResult>, 
+  batchSize: number = 5,
+  delayMs: number = 12000
 ): Promise<BatchResult> {
-  const BATCH_SIZE = 5;
-  const CONCURRENT_REQUESTS = 3;
-  
-  let successfulUpdates = 0;
-  let failedUpdates = 0;
-  let priorityResults = { high: 0, medium: 0, low: 0 };
+  const results: MarketDataResult[] = [];
+  let successful = 0;
+  let failed = 0;
 
-  for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-    const batch = symbols.slice(i, i + BATCH_SIZE);
-    console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(symbols.length/BATCH_SIZE)}: ${batch.join(', ')}`);
-    
-    const batchPromises = batch.slice(0, CONCURRENT_REQUESTS).map(async (symbol) => {
-      try {
-        // Insert symbol if not exists
-        await supabaseClient
-          .from('symbols')
-          .upsert({ symbol }, { onConflict: 'symbol' });
+  console.log(`Processing ${items.length} items in batches of ${batchSize}`);
 
-        const result = await fetchMarketData(supabaseClient, symbol, avKey);
-        
-        // Track priority results
-        if (highPrioritySymbols.includes(symbol)) {
-          priorityResults.high += result.success ? 1 : 0;
-        } else if (mediumPrioritySymbols.includes(symbol)) {
-          priorityResults.medium += result.success ? 1 : 0;
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(items.length / batchSize)}`);
+
+    try {
+      // Process batch concurrently
+      const batchPromises = batch.map(item => processor(item));
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Clean results to avoid circular references
+      const cleanResults = batchResults.map(result => ({
+        symbol: result.symbol,
+        success: result.success,
+        data: result.data ? JSON.parse(JSON.stringify(result.data)) : undefined,
+        error: result.error
+      }));
+      
+      results.push(...cleanResults);
+      
+      // Count successes and failures
+      cleanResults.forEach(result => {
+        if (result.success) {
+          successful++;
         } else {
-          priorityResults.low += result.success ? 1 : 0;
+          failed++;
         }
+      });
 
-        // Collect news sentiment only for high-priority symbols
-        if (result.success && finnhubKey && HIGH_PRIORITY_SYMBOLS.includes(symbol)) {
-          await collectNewsSentiment(supabaseClient, symbol, finnhubKey);
-        }
-        
-        return result.success;
-      } catch (error) {
-        console.error(`Batch processing error for ${symbol}:`, error);
-        return false;
+      // Add delay between batches (except for the last batch)
+      if (i + batchSize < items.length) {
+        console.log(`Waiting ${delayMs}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
       }
-    });
-    
-    const results = await Promise.allSettled(batchPromises);
-    
-    results.forEach((result) => {
-      if (result.status === 'fulfilled' && result.value) {
-        successfulUpdates++;
-      } else {
-        failedUpdates++;
-      }
-    });
-    
-    // Adaptive delay based on API performance
-    const delay = avKey ? (failedUpdates > 3 ? 8000 : 3000) : 1000;
-    if (i + BATCH_SIZE < symbols.length) {
-      await new Promise(resolve => setTimeout(resolve, delay));
+    } catch (error) {
+      console.error(`Batch processing error:`, error.message);
+      // Mark all items in this batch as failed
+      batch.forEach(item => {
+        results.push({
+          symbol: typeof item === 'string' ? item : 'unknown',
+          success: false,
+          error: error.message
+        });
+        failed++;
+      });
     }
   }
 
-  return { successfulUpdates, failedUpdates, priorityResults };
+  return {
+    successful,
+    failed,
+    results
+  };
 }
