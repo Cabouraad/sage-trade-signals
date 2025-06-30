@@ -5,6 +5,21 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
     steps:
       - uses: actions/checkout@v4
       
@@ -17,9 +32,47 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pandas psycopg2-binary
       
-      - name: Run Python tests
+      - name: Setup test database
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: |
-          pytest tests/ -v
+          # Create tables
+          psql $DATABASE_URL -c "
+          CREATE TABLE IF NOT EXISTS price_history(
+            symbol text NOT NULL,
+            date date NOT NULL,
+            open numeric NOT NULL,
+            high numeric NOT NULL,
+            low numeric NOT NULL,
+            close numeric NOT NULL,
+            volume bigint NOT NULL,
+            PRIMARY KEY(symbol, date)
+          );
+          CREATE TABLE IF NOT EXISTS daily_pick(
+            pick_ts timestamptz DEFAULT now() PRIMARY KEY,
+            symbol text NOT NULL,
+            trade_type text NOT NULL,
+            entry numeric NOT NULL,
+            stop numeric NOT NULL,
+            target numeric NOT NULL,
+            kelly_frac numeric,
+            size_pct numeric,
+            reason_bullets text[]
+          );
+          "
+      
+      - name: Seed test data
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: python -m app.tools.seed_stub
+      
+      - name: Test ranking engine
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: python -m app.rank
+      
+      - name: Run Python tests
+        run: pytest tests/ -v
       
       - name: Setup Node.js
         uses: actions/setup-node@v4

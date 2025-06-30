@@ -71,3 +71,16 @@ serve(async (req) => {
     );
   }
 });
+
+// Cron job to run daily at 09:05 ET (13:05 UTC) on weekdays
+Deno.cron("trade-of-day", "5 13 * * 1-5", async () => {
+  console.log("Running scheduled daily job...");
+  const response = await fetch(Deno.env.get('SUPABASE_FUNCTION_URL') + '/daily-job', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  console.log("Scheduled job response:", await response.json());
+});

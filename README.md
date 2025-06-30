@@ -32,15 +32,26 @@ supabase start
 # 5. Apply database migrations
 supabase db reset
 
-# 6. Seed some sample data (optional)
-python -m app.tools.seed_dummy --symbols AAPL MSFT
+# 6. Seed some sample data (REQUIRED for development)
+python -m app.tools.seed_stub
 
-# 7. Run ranking engine once
+# 7. Test the ranking engine
 python -m app.rank
 
 # 8. Start development server
 npm run dev
 ```
+
+## Development Workflow
+
+### After applying any database changes:
+
+1. `supabase start`  
+2. `python -m app.tools.seed_stub` (one-time - creates 90 days of dummy price data)  
+3. `supabase functions invoke python-rank-runner` → logs should display picked symbol  
+4. Refresh the dashboard ⇒ today's trade appears
+
+If picks still don't show, inspect **edge-function logs** in Supabase dashboard for `rank.py finished OK`.
 
 ## Architecture
 
@@ -50,7 +61,7 @@ npm run dev
 - **System Tests**: Connectivity and data validation
 
 ### Backend (Supabase Edge Functions)
-- **daily-job**: Scheduled job runner (runs at 1 PM EST weekdays)
+- **daily-job**: Scheduled job runner (runs at 1:05 PM EST weekdays)
 - **python-rank-runner**: Python-based ranking algorithm implementation
 - **data-collector**: Alpha Vantage API integration for market data
 
@@ -58,6 +69,7 @@ npm run dev
 - **rank.py**: Core ranking algorithm with SMA crossover strategy
 - **risk/kelly.py**: Kelly criterion position sizing
 - **utils/volatility.py**: ATR and volatility calculations
+- **tools/seed_stub.py**: Development data seeding utility
 
 ### Database Schema
 - **price_history**: OHLCV stock data
@@ -80,6 +92,15 @@ The system uses a simple but effective approach:
 - **Supabase**: Database and serverless functions
 - **No external dependencies**: Fully self-contained system
 
+## Environment Setup
+
+Make sure to set the following secrets in your Supabase project:
+
+- `DATABASE_URL`: Your Supabase database connection string
+- `AV_KEY`: Your Alpha Vantage API key
+- `SUPABASE_URL`: Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key
+
 ## Testing
 
 ```bash
@@ -98,7 +119,7 @@ The system is designed to run on Supabase with automatic edge function deploymen
 1. Connect your repository to Supabase
 2. Configure environment variables
 3. Deploy edge functions automatically
-4. Set up cron job for daily execution
+4. Set up cron job for daily execution (runs at 09:05 ET weekdays)
 
 ## Environment Variables
 
@@ -110,6 +131,21 @@ ALPHA_VANTAGE_KEY=demo
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_KEY
 ```
+
+## Troubleshooting
+
+### No Picks Showing Up?
+
+1. Check that you've seeded data: `python -m app.tools.seed_stub`
+2. Verify the ranking engine runs: `python -m app.rank`
+3. Check Supabase edge function logs for errors
+4. Ensure your timezone settings are correct (picks show for last 36 hours)
+
+### Database Connection Issues?
+
+- Verify your `DATABASE_URL` environment variable
+- Check that Supabase is running: `supabase status`
+- Confirm your database tables exist with the migration
 
 ## Contributing
 

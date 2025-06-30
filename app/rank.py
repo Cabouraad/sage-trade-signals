@@ -3,8 +3,14 @@ import os
 import datetime
 import psycopg2
 import pandas as pd
+import logging
+import sys
 from risk.kelly import calc_kelly
 from utils.volatility import atr
+
+# Set up logging
+logging.basicConfig(stream=sys.stdout, level=logging.INFO, 
+                   format='%(asctime)s - %(levelname)s - %(message)s')
 
 UNIVERSE = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN"]
 
@@ -27,8 +33,15 @@ def pick_trade(conn):
     
     for sym in UNIVERSE:
         try:
+            logging.info(f"Analyzing {sym}...")
             df = latest_candles(conn, sym)
-            if len(df) < 60 or not sma_cross(df): 
+            
+            if len(df) < 60:
+                logging.info(f"{sym}: Not enough data ({len(df)} candles)")
+                continue
+                
+            if not sma_cross(df):
+                logging.info(f"{sym}: No SMA crossover signal")
                 continue
                 
             entry = float(df.close.iloc[-1])
@@ -37,7 +50,7 @@ def pick_trade(conn):
             target = entry + 2 * tr_atr
             kelly = calc_kelly(0.55, 1.8)
             
-            picks.append({
+            pick = {
                 'symbol': sym,
                 'entry': entry,
                 'stop': stop,
@@ -50,23 +63,38 @@ def pick_trade(conn):
                     f"ATR-based target (ATR ≈ {tr_atr:.2f})",
                     f"Kelly size {round(kelly * 100, 1)}%"
                 ]
-            })
+            }
+            
+            picks.append(pick)
+            logging.info(f"✓ {sym} qualified: Kelly={kelly:.3f}, Entry=${entry:.2f}")
+            
         except Exception as e:
-            print(f"Error processing {sym}: {e}")
+            logging.error(f"Error processing {sym}: {e}")
             continue
     
-    return max(picks, key=lambda x: x["kelly_frac"]) if picks else None
+    if not picks:
+        logging.warning("No qualifying picks found")
+        return None
+        
+    best_pick = max(picks, key=lambda x: x["kelly_frac"])
+    logging.info(f"Best pick: {best_pick['symbol']} with Kelly {best_pick['kelly_frac']:.3f}")
+    return best_pick
 
 def main():
     """Main entry point for the ranking engine"""
+    logging.info("Starting ranking engine...")
+    
     try:
         conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+        logging.info("Database connected successfully")
+        
         pick = pick_trade(conn)
         
         if not pick:
-            print("No suitable trade candidates found")
+            logging.warning("No suitable trade candidates found")
             return
         
+        # Insert the pick into database
         with conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -78,12 +106,17 @@ def main():
                             %(reason_bullets)s)
                 """, pick)
         
-        print(f"Selected {pick['symbol']} as today's pick")
+        logging.info(f"✓ Successfully stored daily pick: {pick['symbol']}")
         conn.close()
         
     except Exception as e:
-        print(f"Error in main: {e}")
+        logging.exception("Rank failed")
         raise
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        logging.info("rank.py finished OK")
+    except Exception as e:
+        logging.exception("Rank failed")
+        raise

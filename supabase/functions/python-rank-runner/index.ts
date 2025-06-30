@@ -1,6 +1,5 @@
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,7 +20,7 @@ serve(async (req) => {
       PYTHONPATH: '/opt/python'
     };
 
-    // Run Python ranking engine
+    // Run Python ranking engine using Deno.Command (newer API)
     const command = new Deno.Command('python3', {
       args: ['-m', 'app.rank'],
       env: env,

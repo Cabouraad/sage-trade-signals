@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,10 +27,13 @@ export const TodaysPick = () => {
 
   const fetchTodaysPick = async () => {
     try {
-      // Get the most recent pick
+      // Get picks from the last 36 hours to handle timezone differences
+      const cutoffTime = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+      
       const { data, error } = await supabase
         .from('daily_pick')
         .select('*')
+        .gt('pick_ts', cutoffTime)
         .order('pick_ts', { ascending: false })
         .limit(1)
         .maybeSingle();
