@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -65,7 +66,7 @@ export const TodaysPick = () => {
       const dbStrategy = data[0];
       return {
         ...dbStrategy,
-        legs: dbStrategy.legs as OptionsLeg[] // Safe cast since we control the data structure
+        legs: (dbStrategy.legs as unknown) as OptionsLeg[] // Safe cast through unknown
       } as OptionsStrategy;
     },
     refetchInterval: 5 * 60 * 1000,
