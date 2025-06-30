@@ -11,7 +11,7 @@ export const useDailyJob = () => {
     try {
       toast({
         title: "Starting Analysis",
-        description: "Collecting market data and running Python ranking algorithm...",
+        description: "Collecting market data and running TypeScript ranking algorithm...",
       });
 
       const { data, error } = await supabase.functions.invoke('daily-job');
@@ -27,7 +27,7 @@ export const useDailyJob = () => {
           'Data collection completed';
         
         const rankMsg = data.ranking?.success ? 
-          'Python ranking completed successfully' : 
+          'TypeScript ranking completed successfully' : 
           'Ranking had issues';
         
         toast({
