@@ -19,7 +19,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('Starting daily job: Data collection + Python Ranking...');
+    console.log('Starting daily job: Data collection + TypeScript Ranking...');
 
     // Step 1: Collect fresh market data
     const symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY'];
@@ -28,16 +28,16 @@ serve(async (req) => {
     const dataResult = await collectMarketData(supabaseClient, symbols);
     console.log(`Data collection completed: ${dataResult.successfulUpdates} successful, ${dataResult.failedUpdates} failed`);
 
-    // Step 2: Run Python ranking algorithm
-    console.log('Running Python ranking engine...');
-    const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('python-rank-runner');
+    // Step 2: Run TypeScript ranking algorithm
+    console.log('Running TypeScript ranking engine...');
+    const { data: rankResult, error: rankError } = await supabaseClient.functions.invoke('rank-runner');
 
     if (rankError) {
-      console.error('Error calling python-rank-runner:', rankError);
+      console.error('Error calling rank-runner:', rankError);
       throw rankError;
     }
 
-    console.log('Python rank-runner result:', rankResult);
+    console.log('Rank-runner result:', rankResult);
 
     return new Response(
       JSON.stringify({
