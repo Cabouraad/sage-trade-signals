@@ -11,7 +11,7 @@ export const useDailyJob = () => {
     try {
       toast({
         title: "Starting Analysis",
-        description: "Collecting market data and running ranking algorithm...",
+        description: "Collecting market data and running Python ranking algorithm...",
       });
 
       const { data, error } = await supabase.functions.invoke('daily-job');
@@ -26,9 +26,13 @@ export const useDailyJob = () => {
           `Data: ${data.dataCollection.successful}/${data.dataCollection.symbols?.length || 0} symbols updated` : 
           'Data collection completed';
         
+        const rankMsg = data.ranking?.success ? 
+          'Python ranking completed successfully' : 
+          'Ranking had issues';
+        
         toast({
           title: "Analysis Complete",
-          description: `${dataMsg}. ${data?.ranking?.result?.message || 'Ranking completed'}`,
+          description: `${dataMsg}. ${rankMsg}`,
         });
       } else {
         toast({

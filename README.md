@@ -22,19 +22,23 @@ cd tradesage
 npm install
 pip install -r requirements.txt
 
-# 3. Setup Supabase locally (optional)
+# 3. Setup environment variables
+cp .env.example .env
+# Edit .env with your actual values
+
+# 4. Setup Supabase locally (optional)
 supabase start
 
-# 4. Apply database migrations
+# 5. Apply database migrations
 supabase db reset
 
-# 5. Seed some sample data (optional)
+# 6. Seed some sample data (optional)
 python -m app.tools.seed_dummy --symbols AAPL MSFT
 
-# 6. Run ranking engine once
-python -m app.rank pick_trade
+# 7. Run ranking engine once
+python -m app.rank
 
-# 7. Start development server
+# 8. Start development server
 npm run dev
 ```
 
@@ -47,8 +51,13 @@ npm run dev
 
 ### Backend (Supabase Edge Functions)
 - **daily-job**: Scheduled job runner (runs at 1 PM EST weekdays)
-- **rank-runner**: Core ranking algorithm implementation
-- **python-sim**: Advanced analytics and pattern recognition
+- **python-rank-runner**: Python-based ranking algorithm implementation
+- **data-collector**: Alpha Vantage API integration for market data
+
+### Python Engine (/app)
+- **rank.py**: Core ranking algorithm with SMA crossover strategy
+- **risk/kelly.py**: Kelly criterion position sizing
+- **utils/volatility.py**: ATR and volatility calculations
 
 ### Database Schema
 - **price_history**: OHLCV stock data
@@ -67,7 +76,7 @@ The system uses a simple but effective approach:
 
 ## API Integration
 
-- **Alpha Vantage**: Primary stock data source
+- **Alpha Vantage**: Primary stock data source (free tier supported)
 - **Supabase**: Database and serverless functions
 - **No external dependencies**: Fully self-contained system
 
@@ -96,10 +105,10 @@ The system is designed to run on Supabase with automatic edge function deploymen
 Copy `.env.example` to `.env` and configure:
 
 ```bash
-DATABASE_URL=postgresql://...
-ALPHA_VANTAGE_KEY=your_key_here
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_key
+DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres
+ALPHA_VANTAGE_KEY=demo
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_KEY
 ```
 
 ## Contributing

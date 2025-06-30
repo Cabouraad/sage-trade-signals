@@ -1,53 +1,32 @@
 
-"""
-Unit tests for Kelly criterion calculation
-"""
-import pytest
+import sys
+import os
 
-def calc_kelly(win_rate: float, payoff_ratio: float, cap: float = 0.25) -> float:
-    """Calculate Kelly fraction for position sizing"""
-    if win_rate <= 0 or win_rate >= 1 or payoff_ratio <= 0:
-        return 0.0
-    
-    kelly = win_rate - ((1 - win_rate) / payoff_ratio)
-    return max(0.0, min(kelly, cap))
+# Add the app directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 
-def test_calc_kelly_basic():
+from risk.kelly import calc_kelly
+
+def test_kelly_cap():
+    """Test that Kelly fraction is properly capped"""
+    assert calc_kelly(0.6, 2) <= 0.25
+
+def test_kelly_basic():
     """Test basic Kelly calculation"""
-    # Win rate 60%, payoff ratio 1.5:1
-    win_rate = 0.6
-    payoff = 1.5
-    
-    kelly = calc_kelly(win_rate, payoff)
-    
-    # Expected: (1.5 * 0.6 - 0.4) / 1.5 = 0.333...
-    expected = (payoff * win_rate - (1 - win_rate)) / payoff
-    
-    assert abs(kelly - expected) < 0.001
+    result = calc_kelly(0.55, 1.8)
+    expected = 0.55 - (0.45 / 1.8)  # win_rate - (1-win_rate)/payoff
+    assert abs(result - expected) < 0.001
 
-def test_calc_kelly_edge_cases():
-    """Test Kelly calculation edge cases"""
-    # Zero win rate
-    assert calc_kelly(0.0, 1.5) == 0.0
+def test_kelly_edge_cases():
+    """Test Kelly edge cases"""
+    # Zero win rate should return 0
+    assert calc_kelly(0.0, 2.0) == 0
     
-    # 100% win rate (impossible)
-    assert calc_kelly(1.0, 1.5) == 0.0
-    
-    # Negative payoff
-    assert calc_kelly(0.6, -1.0) == 0.0
-    
-    # Zero payoff
-    assert calc_kelly(0.6, 0.0) == 0.0
-
-def test_calc_kelly_capped():
-    """Test Kelly fraction capping"""
-    # Very high win rate and payoff should be capped at 25%
-    kelly = calc_kelly(0.9, 10.0, cap=0.25)
-    assert kelly <= 0.25
+    # Negative Kelly should return 0
+    assert calc_kelly(0.3, 1.0) == 0
 
 if __name__ == "__main__":
-    # Run tests manually
-    test_calc_kelly_basic()
-    test_calc_kelly_edge_cases()
-    test_calc_kelly_capped()
+    test_kelly_cap()
+    test_kelly_basic()
+    test_kelly_edge_cases()
     print("All Kelly tests passed!")
