@@ -71,3 +71,19 @@ serve(async (req) => {
     );
   }
 });
+
+// Schedule the daily job to run at 09:05 ET (13:05 UTC) on weekdays
+Deno.cron("trade-of-day", "5 13 * * 1-5", async () => {
+  console.log('Running scheduled daily job...');
+  const supabaseClient = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+  
+  try {
+    await supabaseClient.functions.invoke('daily-job');
+    console.log('Scheduled daily job completed successfully');
+  } catch (error) {
+    console.error('Scheduled daily job failed:', error);
+  }
+});

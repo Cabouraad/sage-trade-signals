@@ -9,7 +9,7 @@ A comprehensive trading system that combines technical analysis, risk management
 - **Kelly Criterion Position Sizing**: Optimal position sizing based on historical win rates
 - **Real-time Dashboard**: View today's pick, trade history, and system performance
 - **Supabase Integration**: Secure data storage and edge function processing
-- **Python Analytics Engine**: Advanced technical analysis and risk calculations
+- **TypeScript Analytics Engine**: Advanced technical analysis and risk calculations
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ supabase db reset
 python -m app.tools.seed_stub
 
 # 7. Test the ranking engine
-python -m app.rank
+supabase functions invoke rank-runner --no-verify-jwt
 
 # 8. Start development server
 npm run dev
@@ -48,10 +48,15 @@ npm run dev
 
 1. `supabase start`  
 2. `python -m app.tools.seed_stub` (one-time - creates 90 days of dummy price data)  
-3. `supabase functions invoke python-rank-runner` → logs should display picked symbol  
+3. `supabase functions invoke rank-runner --no-verify-jwt` → logs should display picked symbol  
 4. Refresh the dashboard ⇒ today's trade appears
 
-If picks still don't show, inspect **edge-function logs** in Supabase dashboard for `rank.py finished OK`.
+If picks still don't show, inspect **edge-function logs** in Supabase dashboard for `rank-runner` execution details.
+
+### Running the ranker by hand
+```bash
+supabase functions invoke rank-runner --no-verify-jwt
+```
 
 ## Architecture
 
@@ -62,14 +67,14 @@ If picks still don't show, inspect **edge-function logs** in Supabase dashboard 
 
 ### Backend (Supabase Edge Functions)
 - **daily-job**: Scheduled job runner (runs at 1:05 PM EST weekdays)
-- **python-rank-runner**: Python-based ranking algorithm implementation
+- **rank-runner**: TypeScript-based ranking algorithm implementation
 - **data-collector**: Alpha Vantage API integration for market data
 
-### Python Engine (/app)
-- **rank.py**: Core ranking algorithm with SMA crossover strategy
-- **risk/kelly.py**: Kelly criterion position sizing
-- **utils/volatility.py**: ATR and volatility calculations
-- **tools/seed_stub.py**: Development data seeding utility
+### TypeScript Engine
+- **rank-runner**: Core ranking algorithm with SMA crossover strategy
+- **Kelly Criterion**: Position sizing calculations
+- **ATR calculations**: Volatility-based risk management
+- **Automated scheduling**: Cron-based daily execution
 
 ### Database Schema
 - **price_history**: OHLCV stock data
@@ -104,8 +109,8 @@ Make sure to set the following secrets in your Supabase project:
 ## Testing
 
 ```bash
-# Run Python tests
-pytest tests/ -v
+# Test the ranking engine
+supabase functions invoke rank-runner --no-verify-jwt
 
 # Run full CI pipeline locally
 npm run build
@@ -137,7 +142,7 @@ SUPABASE_SERVICE_ROLE_KEY=YOUR_KEY
 ### No Picks Showing Up?
 
 1. Check that you've seeded data: `python -m app.tools.seed_stub`
-2. Verify the ranking engine runs: `python -m app.rank`
+2. Verify the ranking engine runs: `supabase functions invoke rank-runner --no-verify-jwt`
 3. Check Supabase edge function logs for errors
 4. Ensure your timezone settings are correct (picks show for last 36 hours)
 
