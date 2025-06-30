@@ -8,9 +8,11 @@ import { EquityCurve } from "@/components/EquityCurve";
 import { SystemOverview } from "@/components/SystemOverview";
 import { SystemTest } from "@/components/SystemTest";
 import { useAuth } from "@/hooks/useAuth";
+import { useDailyJob } from "@/hooks/useDailyJob";
 
 const Dashboard = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, handleSignOut } = useAuth();
+  const { engineStatus, refreshTrigger, runDailyJob } = useDailyJob();
 
   if (loading) {
     return (
@@ -20,11 +22,19 @@ const Dashboard = () => {
     );
   }
 
+  if (!user) {
+    return null; // This will be handled by useAuth redirect
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader />
+      <DashboardHeader 
+        user={user}
+        onSignOut={handleSignOut}
+        onRunDailyJob={runDailyJob}
+      />
       <main className="container mx-auto px-4 py-8 space-y-8">
-        <DashboardHero />
+        <DashboardHero engineStatus={engineStatus} />
         
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <div className="lg:col-span-2">
