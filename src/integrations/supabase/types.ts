@@ -298,6 +298,11 @@ export type Database = {
       }
       options_strategies: {
         Row: {
+          backtest_avg_loss: number | null
+          backtest_avg_profit: number | null
+          backtest_trades: number | null
+          backtest_validated: boolean | null
+          backtest_win_rate: number | null
           breakeven_points: number[] | null
           confidence_score: number | null
           created_at: string | null
@@ -317,6 +322,11 @@ export type Database = {
           theta_decay: number | null
         }
         Insert: {
+          backtest_avg_loss?: number | null
+          backtest_avg_profit?: number | null
+          backtest_trades?: number | null
+          backtest_validated?: boolean | null
+          backtest_win_rate?: number | null
           breakeven_points?: number[] | null
           confidence_score?: number | null
           created_at?: string | null
@@ -336,6 +346,11 @@ export type Database = {
           theta_decay?: number | null
         }
         Update: {
+          backtest_avg_loss?: number | null
+          backtest_avg_profit?: number | null
+          backtest_trades?: number | null
+          backtest_validated?: boolean | null
+          backtest_win_rate?: number | null
           breakeven_points?: number[] | null
           confidence_score?: number | null
           created_at?: string | null
