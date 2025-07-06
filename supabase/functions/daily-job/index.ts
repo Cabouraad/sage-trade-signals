@@ -56,46 +56,46 @@ serve(async (req) => {
     const dataResult = await collectMarketData(supabaseClient, fullAnalysis);
     console.log(`Data collection completed: ${dataResult.successfulUpdates} successful, ${dataResult.failedUpdates} failed`);
     
-    // More lenient success rate check - allow partial success
+    const successRate = dataResult.successfulUpdates / (dataResult.successfulUpdates + dataResult.failedUpdates);
+    console.log(`Data collection success rate: ${Math.round(successRate * 100)}%`);
+    console.log(`Priority breakdown - High: ${dataResult.priorityResults.high}, Medium: ${dataResult.priorityResults.medium}, Low: ${dataResult.priorityResults.low}`);
+
+    // STRICT data freshness validation - require at least some fresh data
     if (dataResult.successfulUpdates === 0) {
-      console.warn('No live market data collected. Checking if we have any usable existing data...');
+      console.error('CRITICAL: Daily job collected zero fresh market data');
       
-      // Check if we have any recent data (within last 7 days) to work with
+      // Check if we have ANY recent data (within 24 hours) to work with
       const { data: recentData, error } = await supabaseClient
         .from('price_history')
         .select('symbol, date')
-        .gte('date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .gte('date', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
         .limit(1);
       
       if (error || !recentData || recentData.length === 0) {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: `Failed to collect ANY live market data and no recent data available. API issues detected.`,
+            error: `CRITICAL: No live market data available within 24-hour freshness requirement. Cannot generate safe options trades.`,
             details: {
               successfulUpdates: dataResult.successfulUpdates,
               failedUpdates: dataResult.failedUpdates,
-              apiKeysConfigured: { alphaVantage: !!alphaVantageKey, finnhub: !!finnhubKey }
+              apiKeysConfigured: { alphaVantage: !!alphaVantageKey, finnhub: !!finnhubKey },
+              requirement: 'Data must be <24 hours old for live options trading'
             },
             timestamp: new Date().toISOString(),
             dataFreshness: 'FAILED'
           }),
           { 
-            status: 500,
+            status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
           }
         );
       } else {
-        console.log('Found some recent data, proceeding with analysis using existing data...');
+        console.log('Found minimal recent data, proceeding with limited analysis...');
       }
     }
-
-    const successRate = dataResult.successfulUpdates / (dataResult.successfulUpdates + dataResult.failedUpdates);
-    console.log(`Data collection success rate: ${Math.round(successRate * 100)}%`);
-
-    console.log(`Priority breakdown - High: ${dataResult.priorityResults.high}, Medium: ${dataResult.priorityResults.medium}, Low: ${dataResult.priorityResults.low}`);
-
-    // Step 2: Run comprehensive options analysis
+    // Step 2: Run comprehensive options analysis with STRICT validation
+    console.log('Starting options analysis with strict backtesting and data validation...');
     const optionsResult = await runOptionsAnalysis(supabaseClient, HIGH_PRIORITY_SYMBOLS);
 
     // Step 3: Run stock ranking (as fallback if options analysis fails)

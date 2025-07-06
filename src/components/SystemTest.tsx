@@ -136,8 +136,75 @@ export const SystemTest = () => {
       });
     }
 
-    setResults(testResults);
-    setTesting(false);
+    // Test 5: Options Strategy Validation
+    try {
+      const { data, error } = await supabase
+        .from('options_strategies')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (error) throw error;
+      
+      testResults.push({
+        name: 'Options Strategy Validation',
+        status: data && data.backtest_validated ? 'success' : 'warning',
+        message: data && data.backtest_validated ? 
+          `Latest strategy passed backtesting: ${data.symbol} (${Math.round((data.backtest_win_rate || 0) * 100)}% win rate)` : 
+          data ? 'Strategy found but not backtested' : 'No strategies found',
+        details: data ? {
+          symbol: data.symbol,
+          strategy: data.strategy_name,
+          riskReward: data.risk_reward_ratio,
+          backtestValidated: data.backtest_validated,
+          winRate: data.backtest_win_rate,
+          tradesBacktested: data.backtest_trades
+        } : null
+      });
+    } catch (error: any) {
+      testResults.push({
+        name: 'Options Strategy Validation',
+        status: 'error',
+        message: `Options strategy validation failed: ${error.message}`
+      });
+    }
+
+    // Test 6: Data Freshness Check
+    try {
+      const { data, error } = await supabase
+        .from('price_history')
+        .select('symbol, date, close')
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (error) throw error;
+      
+      const hoursOld = data ? (Date.now() - new Date(data.date).getTime()) / (1000 * 60 * 60) : 999;
+      const isLiveData = hoursOld <= 24;
+      
+      testResults.push({
+        name: 'Live Data Freshness',
+        status: isLiveData ? 'success' : 'error',
+        message: data ? 
+          `Latest data is ${Math.round(hoursOld)} hours old ${isLiveData ? '(LIVE)' : '(STALE)'}` : 
+          'No price data found',
+        details: data ? {
+          symbol: data.symbol,
+          date: data.date,
+          hoursOld: Math.round(hoursOld),
+          requirement: '< 24 hours for live trading',
+          status: isLiveData ? 'LIVE' : 'STALE'
+        } : null
+      });
+    } catch (error: any) {
+      testResults.push({
+        name: 'Live Data Freshness',
+        status: 'error',
+        message: `Data freshness check failed: ${error.message}`
+      });
+    }
   };
 
   const getStatusIcon = (status: TestResult['status']) => {

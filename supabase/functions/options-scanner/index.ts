@@ -22,9 +22,9 @@ async function checkLiveDataAvailability(symbols: string[]): Promise<{ symbol: s
       .select('close, date')
       .eq('symbol', symbol)
       .order('date', { ascending: false })
-      .limit(21); // Need 21 days for volatility calculation
+      .limit(90); // Need 90 days for backtesting
     
-    if (!data || data.length < 10) {
+    if (!data || data.length < 60) {
       dataStatus.push({
         symbol,
         hasRecentData: false,
@@ -35,8 +35,12 @@ async function checkLiveDataAvailability(symbols: string[]): Promise<{ symbol: s
       continue;
     }
     
-    // More lenient data freshness check - accept data within 7 days
-    const hasRecentData = new Date(data[0].date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    // STRICT data freshness check - ONLY accept data within 24 hours for live trading
+    const latestDataTime = new Date(data[0].date).getTime();
+    const now = Date.now();
+    const hoursOld = (now - latestDataTime) / (1000 * 60 * 60);
+    const hasRecentData = hoursOld <= 24;
+    
     const currentPrice = data[0].close;
     const volatility = calculateRealVolatility(data);
     
@@ -82,6 +86,47 @@ function identifyMarketRegime(priceData: any[], volatility: number): 'trending_u
   return 'sideways';
 }
 
+async function backtestStrategy(symbol: string, priceData: any[], strategy: any): Promise<{ winRate: number, avgProfit: number, avgLoss: number, totalTrades: number }> {
+  if (priceData.length < 60) return { winRate: 0, avgProfit: 0, avgLoss: 0, totalTrades: 0 };
+  
+  const trades = [];
+  const lookbackPeriod = 30; // Days to hold position
+  
+  // Test strategy on historical data (skip most recent 30 days for out-of-sample testing)
+  for (let i = 30; i < priceData.length - lookbackPeriod; i += 7) { // Test weekly
+    const entryPrice = priceData[i].close;
+    const exitPrice = priceData[i + lookbackPeriod] ? priceData[i + lookbackPeriod].close : priceData[priceData.length - 1].close;
+    
+    const priceChange = (exitPrice - entryPrice) / entryPrice;
+    
+    // Simulate strategy P&L based on price movement
+    let strategyPnL = 0;
+    if (strategy.strategy_type === 'bullish' && priceChange > 0.02) {
+      strategyPnL = Math.min(strategy.max_profit, strategy.expected_return * 1.5);
+    } else if (strategy.strategy_type === 'bearish' && priceChange < -0.02) {
+      strategyPnL = Math.min(strategy.max_profit, strategy.expected_return * 1.5);
+    } else if (strategy.strategy_type === 'neutral' && Math.abs(priceChange) < 0.05) {
+      strategyPnL = strategy.expected_return * 0.8; // Collect most of premium
+    } else {
+      strategyPnL = -Math.min(strategy.max_loss * 0.5, strategy.expected_return); // Partial loss
+    }
+    
+    trades.push(strategyPnL);
+  }
+  
+  if (trades.length === 0) return { winRate: 0, avgProfit: 0, avgLoss: 0, totalTrades: 0 };
+  
+  const winners = trades.filter(t => t > 0);
+  const losers = trades.filter(t => t < 0);
+  
+  return {
+    winRate: winners.length / trades.length,
+    avgProfit: winners.length > 0 ? winners.reduce((a, b) => a + b, 0) / winners.length : 0,
+    avgLoss: losers.length > 0 ? Math.abs(losers.reduce((a, b) => a + b, 0) / losers.length) : 0,
+    totalTrades: trades.length
+  };
+}
+
 async function generateProfitableOptionsStrategies(symbols: string[]): Promise<any[]> {
   const strategies: any[] = [];
   
@@ -91,19 +136,19 @@ async function generateProfitableOptionsStrategies(symbols: string[]): Promise<a
       .select('close, date, high, low')
       .eq('symbol', symbol)
       .order('date', { ascending: false })
-      .limit(21);
+      .limit(90); // Need more data for backtesting
     
-    if (!priceData || priceData.length < 10) {
-      console.log(`Skipping ${symbol} - insufficient recent price data`);
+    if (!priceData || priceData.length < 60) {
+      console.log(`Skipping ${symbol} - insufficient historical data for backtesting`);
       continue;
     }
     
     const latestDate = new Date(priceData[0].date);
-    const daysSinceUpdate = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24);
+    const hoursOld = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60);
     
-    // More lenient data freshness check - accept data within 7 days
-    if (daysSinceUpdate > 7) {
-      console.log(`Skipping ${symbol} - data is ${Math.round(daysSinceUpdate)} days old`);
+    // STRICT data freshness check - ONLY accept data within 24 hours
+    if (hoursOld > 24) {
+      console.log(`Skipping ${symbol} - data is ${Math.round(hoursOld)} hours old (exceeds 24hr limit)`);
       continue;
     }
     
@@ -114,12 +159,37 @@ async function generateProfitableOptionsStrategies(symbols: string[]): Promise<a
     // Generate strategy based on market regime and volatility
     const strategy = generateOptimalStrategy(symbol, currentPrice, volatility, marketRegime, priceData[0].date);
     
-    if (strategy && strategy.risk_reward_ratio >= 0.4) { // Only accept strategies with 2.5:1 or better reward:risk
+    if (!strategy) continue;
+    
+    // BACKTEST THE STRATEGY
+    const backtestResults = await backtestStrategy(symbol, priceData, strategy);
+    
+    // STRICT QUALITY FILTERS - Only accept strategies that pass backtesting
+    const passesBacktest = backtestResults.winRate >= 0.65 && backtestResults.totalTrades >= 5;
+    const hasGoodRiskReward = strategy.risk_reward_ratio >= 2.0; // Minimum 2:1 reward-to-risk
+    const hasHighConfidence = strategy.expected_profit_probability >= 0.70;
+    
+    if (passesBacktest && hasGoodRiskReward && hasHighConfidence) {
+      // Update strategy with backtest results
+      strategy.backtest_win_rate = backtestResults.winRate;
+      strategy.backtest_trades = backtestResults.totalTrades;
+      strategy.backtest_avg_profit = backtestResults.avgProfit;
+      strategy.backtest_avg_loss = backtestResults.avgLoss;
+      strategy.backtest_validated = true;
+      
       strategies.push(strategy);
+      console.log(`✓ ${symbol} strategy passed validation: ${Math.round(backtestResults.winRate * 100)}% win rate, ${strategy.risk_reward_ratio.toFixed(2)}:1 R/R`);
+    } else {
+      console.log(`✗ ${symbol} strategy failed validation: WinRate=${Math.round(backtestResults.winRate * 100)}%, R/R=${strategy.risk_reward_ratio.toFixed(2)}, Trades=${backtestResults.totalTrades}`);
     }
   }
   
-  return strategies.sort((a, b) => (b.expected_profit_probability || 0) - (a.expected_profit_probability || 0));
+  // Sort by expected value (win rate * avg profit - (1-win rate) * avg loss)
+  return strategies.sort((a, b) => {
+    const aExpectedValue = a.backtest_win_rate * a.backtest_avg_profit - (1 - a.backtest_win_rate) * a.backtest_avg_loss;
+    const bExpectedValue = b.backtest_win_rate * b.backtest_avg_profit - (1 - b.backtest_win_rate) * b.backtest_avg_loss;
+    return bExpectedValue - aExpectedValue;
+  });
 }
 
 function generateOptimalStrategy(symbol: string, currentPrice: number, volatility: number, regime: string, lastUpdate: string): any | null {
@@ -309,7 +379,31 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting LIVE options analysis with improved profitability algorithms...');
+    console.log('Starting STRICT live options analysis - NO STALE DATA ALLOWED');
+    
+    // VALIDATE API KEYS FIRST
+    const alphaVantageKey = Deno.env.get('ALPHA_VANTAGE_API_KEY') || Deno.env.get('AV_KEY');
+    const finnhubKey = Deno.env.get('FINNHUB_KEY');
+    
+    if (!alphaVantageKey && !finnhubKey) {
+      console.error('CRITICAL: No market data API keys configured');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Market data API keys not configured. Cannot fetch live data without valid API keys.',
+          required_keys: ['ALPHA_VANTAGE_API_KEY', 'FINNHUB_KEY'],
+          instruction: 'Configure at least one API key in Supabase secrets',
+          data_freshness: 'FAILED',
+          timestamp: new Date().toISOString()
+        }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    console.log(`API Keys configured: AV=${!!alphaVantageKey}, Finnhub=${!!finnhubKey}`);
     
     const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMZN', 'GOOGL', 'META', 'SPY', 'QQQ', 'IWM'];
     
@@ -329,43 +423,20 @@ serve(async (req) => {
     const symbolsWithRecentData = dataStatus.filter(s => s.hasRecentData && s.currentPrice).map(s => s.symbol);
     
     if (symbolsWithRecentData.length === 0) {
-      console.warn('No symbols have recent data (within 7 days). Checking for any usable data...');
-      
-      // Fallback: Check if we have any data at all (within 30 days)
-      const symbolsWithAnyData = dataStatus.filter(s => s.currentPrice && s.lastUpdate).map(s => s.symbol);
-      
-      if (symbolsWithAnyData.length === 0) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'No symbols have any usable price data. Market data collection may have failed completely.',
-            symbols_checked: symbols.length,
-            data_freshness: 'FAILED',
-            timestamp: new Date().toISOString()
-          }),
-          { 
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          }
-        );
-      }
-      
-      console.log(`Using ${symbolsWithAnyData.length} symbols with older data as fallback`);
-      const allStrategies = await generateProfitableOptionsStrategies(symbolsWithAnyData);
+      console.error('CRITICAL: No symbols have data within 24-hour freshness requirement for live trading');
       
       return new Response(
-        JSON.stringify({
-          success: true,
-          message: `Generated ${allStrategies.length} strategies using available data (some may be older than preferred)`,
-          strategies_found: allStrategies.length,
-          symbols_analyzed: symbolsWithAnyData.length,
-          symbols_with_recent_data: symbolsWithRecentData,
-          warning: 'Using older data due to market data collection issues',
-          data_freshness: 'STALE_FALLBACK',
+        JSON.stringify({ 
+          success: false, 
+          error: 'No live market data available within 24-hour freshness requirement. Cannot generate safe options trades with stale data.',
+          symbols_checked: symbols.length,
+          data_freshness: 'FAILED',
+          requirement: 'Data must be <24 hours old for live options trading',
+          api_keys_needed: 'Configure ALPHA_VANTAGE_API_KEY or FINNHUB_KEY in Supabase secrets',
           timestamp: new Date().toISOString()
         }),
         { 
-          status: 200,
+          status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
@@ -379,8 +450,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'No profitable strategies could be generated that meet minimum risk/reward criteria.',
+          error: 'No backtested strategies passed validation criteria (min 65% win rate, 2:1 reward-to-risk, 70% confidence).',
           symbols_analyzed: symbolsWithRecentData.length,
+          validation_criteria: {
+            min_win_rate: '65%',
+            min_risk_reward: '2.0:1',
+            min_confidence: '70%',
+            min_backtest_trades: 5
+          },
           data_freshness: 'LIVE',
           timestamp: new Date().toISOString()
         }),
